@@ -55,7 +55,7 @@ const SHARD_MAP = {
   'health': 5011, '65 health': 5011
 };
 
-// ---- Detect active First-Item filter from the onetricks.gg UI ----
+// ---- Detect active First-Item filter from the site UI ----
 async function detectSelectedFirstItemKey() {
   try {
     const key = await webFrame.executeJavaScript(`
@@ -316,12 +316,12 @@ function toast(msg, ok = true) {
 // ---- Gear SVG Icon ----
 const GEAR_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`;
 
-// ---- CSS matching onetricks.gg native style ----
+// ---- CSS matching site native style ----
 const CSS = `
 /* Hide video ads that displace header layout */
 .video-ad-center, .video-ad-top, .video-ad { display: none !important; }
 
-/* Primary "Import" Button matching onetricks "Get Pro" style */
+/* Primary "Import" Button matching site primary style */
 .otp-btn {
   background: rgb(16, 99, 183);
   color: #ffffff;
@@ -353,7 +353,7 @@ const CSS = `
 }
 .otp-dot.connected { background: #22c55e; }
 
-/* Gear Icon Button matching onetricks secondary buttons */
+/* Gear Icon Button matching site secondary buttons */
 .otp-gear {
   background: rgb(24, 26, 27);
   border: 1px solid rgb(85, 85, 85);

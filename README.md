@@ -1,17 +1,17 @@
-# OneTricks Client
+# OTP Client
 
-Desktop app for [onetricks.gg](https://www.onetricks.gg). Browse one-trick builds and send runes + items straight to your League of Legends client.
+Desktop companion for browsing one-trick builds, with one-click rune, item and summoner-spell import into the League of Legends client.
 
 ## Features
 
-- onetricks.gg in a desktop window (with ad blocking)
+- Build browser in a desktop window (with ad blocking)
 - One-click import: runes, items, summoner spells
 - Auto follow your champ-select pick, auto import on lock-in
 - Auto accept match, auto select spells (all toggleable in settings ⚙)
 
 ## Install
 
-Download the latest `OneTricks-Client-Setup-x.x.x.exe` from [Releases](../../releases) and run it.
+Download the latest `OTP-Client-Setup-x.x.x.exe` from [Releases](../../releases) and run it.
 
 > The app is not code-signed, so Windows SmartScreen may show a warning. Click "More info" → "Run anyway".
 
@@ -32,7 +32,6 @@ npm run dist
 
 Output goes to `dist/`.
 
-## Notes
+## Disclaimer
 
-- Uses only the official League Client (LCU) API. No memory reading or injection.
-- Not affiliated with onetricks.gg or Riot Games.
+Community project, for personal use. Not affiliated with or endorsed by Riot Games or any build-data provider. Uses only the official League Client (LCU) API — no memory reading or injection. All build data, champion names and game assets belong to their respective owners. "League of Legends" is a trademark of Riot Games, Inc.

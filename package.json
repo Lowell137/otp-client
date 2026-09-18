@@ -1,7 +1,7 @@
 {
-  "name": "onetricks-electron",
-  "version": "0.1.1",
-  "description": "onetricks.gg Electron wrapper + LCU run/item import",
+  "name": "otp-client",
+  "version": "0.1.2",
+  "description": "Desktop companion for browsing one-trick builds with one-click rune/item import via the official League Client API",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -9,8 +9,8 @@
     "dist:win": "electron-builder --win"
   },
   "build": {
-    "appId": "gg.onetricks.client",
-    "productName": "OneTricks Client",
+    "appId": "com.otp.client",
+    "productName": "OTP Client",
     "directories": {
       "output": "dist"
     },
@@ -28,7 +28,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "OneTricks Client"
+      "shortcutName": "OTP Client"
     }
   },
   "dependencies": {
