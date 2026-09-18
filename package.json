@@ -1,0 +1,39 @@
+{
+  "name": "onetricks-electron",
+  "version": "0.1.0",
+  "description": "onetricks.gg Electron wrapper + LCU run/item import",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win",
+    "dist:win": "electron-builder --win"
+  },
+  "build": {
+    "appId": "gg.onetricks.client",
+    "productName": "OneTricks Client",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "lcu.js",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "OneTricks Client"
+    }
+  },
+  "dependencies": {
+    "league-connect": "^5.5.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^26.15.3"
+  }
+}
