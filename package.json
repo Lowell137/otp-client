@@ -1,6 +1,6 @@
 {
   "name": "onetricks-electron",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "onetricks.gg Electron wrapper + LCU run/item import",
   "main": "main.js",
   "scripts": {
@@ -18,10 +18,12 @@
       "main.js",
       "preload.js",
       "lcu.js",
-      "package.json"
+      "package.json",
+      "assets/"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "assets/icon.ico"
     },
     "nsis": {
       "oneClick": false,
