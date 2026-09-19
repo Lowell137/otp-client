@@ -72,20 +72,22 @@ function startLcuLoops() {
     } catch {}
   }, 500);
 
-  // auto accept matches (2s)
+  // auto accept matches (1s)
   setInterval(async () => {
     try {
       if (!flags.autoAccept) return;
-      const { authenticate, request } = require('league-connect');
-      const creds = await authenticate({ awaitConnection: false });
+      const lcu = require('./lcu.js');
+      const creds = await lcu.getCreds();
+      const { request } = require('league-connect');
       const res = await request({ method: 'GET', url: '/lol-gameflow/v1/gameflow-phase' }, creds);
       if (res.status !== 200) return;
       const phase = await res.json();
       if (phase === 'ReadyCheck') {
         await request({ method: 'POST', url: '/lol-matchmaking/v1/ready-check/accept' }, creds);
+        console.log('[otp] Match automatically accepted!');
       }
     } catch {}
-  }, 2000);
+  }, 1000);
 }
 
 async function createWindow() {
@@ -120,6 +122,7 @@ app.whenReady().then(async () => {
   await createWindow();
   const lcu = require('./lcu.js');
   lcu.registerIpc(ipcMain);
+  startLcuLoops();
   // Pre-warm champion and ddragon caches in background for instant lookup
   champIdToName(1).catch(() => {});
   lcu.getChampId('Annie').catch(() => {});

@@ -796,9 +796,8 @@ const TIER_CSS = `
 .pro-badge{display:none !important}
 a.pro-btn,button.pro-btn{display:none !important}
 .header-menu-btn, .home-header-menu-btn{display:none !important}
-a[href*="discord"]{display:none !important}
 #otp-tiernav,#otp-sumnav{cursor:pointer}
-#ad-slot,[id="ad-slot"],.vm-placement,[class*="vm-placement"],div:has(>.vm-placement),div:has(>div>.vm-placement){display:none !important;height:0 !important;min-height:0 !important;max-height:0 !important;margin:0 !important;padding:0 !important;opacity:0 !important;pointer-events:none !important;visibility:hidden !important;}
+#ad-slot,[id="ad-slot"],.vm-placement,[class*="vm-placement"]{display:none !important;height:0 !important;min-height:0 !important;max-height:0 !important;margin:0 !important;padding:0 !important;opacity:0 !important;pointer-events:none !important;visibility:hidden !important;}
 `;
 
 function injectTierNav() {
