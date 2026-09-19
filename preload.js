@@ -619,18 +619,13 @@ function injectHeaderActions() {
       </div>
     </div>
     <div style="padding:6px 8px;border-top:1px solid rgb(50,53,56);">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 8px;user-select:none;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0;user-select:none;">
         <span style="font-size:12px;color:#e8e6e3;font-weight:500;">Flash Key</span>
         <div id="otp-flash-group" style="display:inline-flex;background:rgb(15,18,20);border:1px solid rgb(70,75,85);border-radius:4px;overflow:hidden;">
           <button type="button" class="otp-flash-btn" data-slot="D" style="padding:3px 12px;font-size:11px;font-weight:700;border:none;cursor:pointer;outline:none;transition:all 0.15s ease;">D</button>
           <button type="button" class="otp-flash-btn" data-slot="F" style="padding:3px 12px;font-size:11px;font-weight:700;border:none;cursor:pointer;outline:none;transition:all 0.15s ease;">F</button>
         </div>
       </div>
-      <div style="font-size:11px;color:#9aa3b8;margin:6px 0 4px;">Region</div>
-      <select id="otp-region"
-        style="width:100%;box-sizing:border-box;background:rgb(15,18,20);border:1px solid rgb(85,85,85);border-radius:4px;color:#e8e6e3;font-size:12px;padding:6px;outline:none;">
-        ${['tr1', 'euw1', 'eun1', 'na1', 'br1', 'la1', 'la2', 'kr', 'jp1', 'oc1', 'ru'].map((r) => `<option value="${r}"${settings.region === r ? ' selected' : ''}>${r.toUpperCase()}</option>`).join('')}
-      </select>
     </div>
     <div id="otp-log" class="otp-popover-log"></div>
   `;
@@ -686,11 +681,6 @@ function injectHeaderActions() {
   });
   paintFlashBtns();
 
-  const regSel = bar.querySelector('#otp-region');
-  if (regSel) {
-    regSel.onclick = (e) => e.stopPropagation();
-    regSel.onchange = () => { settings.region = regSel.value; saveSettings(); };
-  }
 
   // Close popover when clicking outside
   document.addEventListener('click', (e) => {
@@ -796,7 +786,8 @@ const TIER_CSS = `
 .pro-badge{display:none !important}
 a.pro-btn,button.pro-btn{display:none !important}
 .header-menu-btn, .home-header-menu-btn{display:none !important}
-#otp-tiernav,#otp-sumnav{cursor:pointer}
+a[href*="discord"], .sidePanel{display:none !important}
+#otp-tiernav,#otp-sumnav{display:inline-flex !important;align-items:center !important;cursor:pointer !important}
 #ad-slot,[id="ad-slot"],.vm-placement,[class*="vm-placement"]{display:none !important;height:0 !important;min-height:0 !important;max-height:0 !important;margin:0 !important;padding:0 !important;opacity:0 !important;pointer-events:none !important;visibility:hidden !important;}
 `;
 
@@ -822,7 +813,7 @@ function injectTierNav() {
   if (origTier) {
     origTier.id = 'otp-tiernav';
     origTier.removeAttribute('aria-describedby');
-    origTier.style.cursor = 'pointer';
+    origTier.style.cssText = 'display:inline-flex !important;align-items:center;color:var(--text);text-decoration:none;cursor:pointer;margin:0 !important;';
     origTier.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -842,10 +833,10 @@ function injectTierNav() {
       const parent = origTier.parentElement;
       const isGap = parent && getComputedStyle(parent).gap && getComputedStyle(parent).gap !== 'normal';
       if (isGap) {
-        sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;display:inline-flex;align-items:center;white-space:nowrap;margin:0 !important;';
+        sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;display:inline-flex !important;align-items:center;white-space:nowrap;margin:0 !important;';
         sb.innerHTML = '<div style="color:var(--text);">Summoner</div>';
       } else {
-        sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;display:inline-block;margin:0;';
+        sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;display:inline-flex !important;align-items:center;margin:0;';
         sb.innerHTML = '<div style="color:var(--text);display:inline-block;">Summoner</div>';
       }
       origTier.after(sb);
@@ -865,7 +856,7 @@ function injectTierNav() {
   btn.textContent = 'Tier List';
   btn.href = 'javascript:void(0)';
   btn.className = anchor.className || 'header-btns';
-  btn.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;margin-left:16px;';
+  btn.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;display:inline-flex !important;align-items:center;margin-left:16px;';
   btn.onclick = (e) => { e.preventDefault(); try { ipcRenderer.send('otp:open-tier'); } catch {} };
 
   const sb = document.createElement('a');
@@ -873,7 +864,7 @@ function injectTierNav() {
   sb.textContent = 'Summoner';
   sb.href = 'javascript:void(0)';
   sb.className = anchor.className || 'header-btns';
-  sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;margin-left:16px;';
+  sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;display:inline-flex !important;align-items:center;margin-left:16px;';
   sb.onclick = (e) => { e.preventDefault(); try { ipcRenderer.send('otp:open-summoner'); } catch {} };
 
   anchor.parentElement.appendChild(btn);
