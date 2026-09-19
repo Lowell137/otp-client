@@ -1,6 +1,6 @@
 {
   "name": "otp-client",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Desktop companion for browsing one-trick builds with one-click rune/item import via the official League Client API",
   "main": "main.js",
   "scripts": {
@@ -18,6 +18,10 @@
       "main.js",
       "preload.js",
       "lcu.js",
+      "tier-preload.js",
+      "tierlist.html",
+      "summoner-preload.js",
+      "summoner.html",
       "package.json",
       "assets/"
     ],

@@ -55,6 +55,35 @@ const SHARD_MAP = {
   'health': 5011, '65 health': 5011
 };
 
+function extractStats(popStat) {
+  if (!popStat) return [5008, 5008, 5001];
+  let arr = popStat;
+  if (Array.isArray(arr[0])) arr = arr[0];
+  if (Array.isArray(arr[0])) arr = arr[0];
+  const nums = (Array.isArray(arr) ? arr : []).map(Number).filter((n) => !isNaN(n) && n >= 5000 && n < 6000);
+  if (nums.length === 3) return nums;
+  return [5008, 5008, 5001];
+}
+
+function extractSpells(sSpells) {
+  if (!sSpells) return [4, 14];
+  if (Array.isArray(sSpells)) {
+    const direct = sSpells.map(Number).filter((n) => !isNaN(n) && n > 0 && n < 50);
+    if (direct.length === 2) return direct;
+    for (const entry of sSpells) {
+      if (Array.isArray(entry)) {
+        if (Array.isArray(entry[0])) {
+          const sub = entry[0].map(Number).filter((n) => !isNaN(n) && n > 0 && n < 50);
+          if (sub.length === 2) return sub;
+        }
+        const flat = entry.map(Number).filter((n) => !isNaN(n) && n > 0 && n < 50);
+        if (flat.length === 2) return flat;
+      }
+    }
+  }
+  return [4, 14];
+}
+
 // ---- Detect active First-Item filter from the site UI ----
 async function detectSelectedFirstItemKey() {
   try {
@@ -194,42 +223,17 @@ async function extractActiveRunesFromDOM(runeNameMap, fallbackStats) {
   }
 }
 
-// ---- Build data from __NEXT_DATA__ with DOM rune override ----
-async function parseBuild() {
-  if (!location.pathname.includes('/champions/builds/')) {
-    return { error: 'Please open a champion build page (e.g. /champions/builds/Lucian)', notBuildPage: true };
-  }
-
-  const selectedFirstKey = await detectSelectedFirstItemKey();
-
-  // Get page props from __NEXT_DATA__
-  let pp = null;
-  try {
-    const el = document.getElementById('__NEXT_DATA__');
-    if (el) pp = JSON.parse(el.textContent)?.props?.pageProps;
-  } catch {}
-
-  if (!pp) {
-    try {
-      const r = await fetch(location.href, { credentials: 'omit' });
-      const html = await r.text();
-      const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-      if (m) pp = JSON.parse(m[1])?.props?.pageProps;
-    } catch {}
-  }
-
-  if (!pp) return { error: 'Page data not found' };
-
-  const champ = pp.champion || pp.key?.split('--')?.[0];
+// ---- Build parser from pageProps ----
+function buildFromPageProps(pp, champion, selectedFirstKey = 'all', domRunes = null) {
+  const champ = pp.champion || pp.key?.split('--')?.[0] || champion;
   if (!champ) return { error: 'Champion not found on page' };
 
   const fis = pp.firstItemStats;
   if (!fis) return { error: 'No build data available for this champion' };
 
-  const patches = Object.keys(fis);
-  const patch = patches[0];
-  const byFirst = fis[patch];
-  if (!byFirst) return { error: `No build data for patch: ${patch}` };
+  const patches = Object.keys(fis || {});
+  const patch = patches[0] || '16.18';
+  const byFirst = fis[patch] || {};
 
   const firstKey = (selectedFirstKey && byFirst[selectedFirstKey])
     ? selectedFirstKey
@@ -237,15 +241,11 @@ async function parseBuild() {
   const group = byFirst[firstKey] ?? byFirst.all ?? byFirst[Object.keys(byFirst)[0]];
   if (!group) return { error: 'Build group not found' };
 
-  // ---- RUNE EXTRACTION: DOM first, fallback to popRunes ----
-  const runeNameMap = buildRuneNameMap(pp.runes?.subStyle);
   const slotMap = buildSlotMap(pp.runes?.subStyle);
-  const fallbackStats = group.popStat ?? [5008, 5008, 5001];
+  const fallbackStats = extractStats(group.popStat);
 
-  let runes = await extractActiveRunesFromDOM(runeNameMap, fallbackStats);
-
+  let runes = domRunes;
   if (!runes) {
-    // Fallback: pick best variant from popRunes (static data)
     let bestKeystone = null;
     let bestVariant = null;
     for (const [k, variants] of Object.entries(group.popRunes || {})) {
@@ -261,17 +261,18 @@ async function parseBuild() {
     const [six, rate, tree] = bestVariant;
     const [primary, sub] = tree;
     const ordered = orderRunes(six, primary, sub, bestKeystone, slotMap);
+    const perks = [...ordered];
+    while (perks.length < 6) perks.push(ordered[0] || 8000);
     runes = {
       primary,
       sub,
       keystone: Number(bestKeystone),
-      selectedPerkIds: [...ordered, ...fallbackStats].map(Number),
+      selectedPerkIds: [...perks.slice(0, 6), ...fallbackStats].map(Number),
       source: 'static:bestVariant'
     };
   }
 
-  // ---- ITEMS ----
-  const sSpells = group.sSpells?.[0]?.[0]?.map(Number) ?? [];
+  const sSpells = extractSpells(group.sSpells);
   const starting = group.startingItems?.[0]?.[0]?.map(Number) ?? [];
   const full = (group.popularItems ?? []).slice(0, 6).map(([id]) => Number(id));
   const core = (group.popCore?.[0]?.[0] ?? full.slice(0, 2)).map(Number);
@@ -288,8 +289,66 @@ async function parseBuild() {
   };
 }
 
+// Fetch build directly for any champion (SSR fast fetch ~100ms)
+async function fetchBuildForChamp(champion) {
+  const target = `/champions/builds/${champion}`.toLowerCase();
+  if (location.pathname.toLowerCase() === target) {
+    const b = await parseBuild();
+    if (b && !b.error) return b;
+  }
+  try {
+    const url = `https://www.onetricks.gg/champions/builds/${encodeURIComponent(champion)}`;
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const html = await r.text();
+    const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+    if (!m) return null;
+    const pp = JSON.parse(m[1])?.props?.pageProps;
+    if (!pp?.firstItemStats) return null;
+    const b = buildFromPageProps(pp, champion, 'all', null);
+    if (b && !b.error) b.flashSlot = settings.flashSlot || 'D';
+    return b;
+  } catch {
+    return null;
+  }
+}
+
+// ---- Build data from current page with DOM rune override ----
+async function parseBuild() {
+  if (!location.pathname.includes('/champions/builds/')) {
+    return { error: 'Please open a champion build page (e.g. /champions/builds/Lucian)', notBuildPage: true };
+  }
+
+  const selectedFirstKey = await detectSelectedFirstItemKey();
+
+  // Get page props from __NEXT_DATA__
+  let pp = null;
+  try {
+    const el = document.getElementById('__NEXT_DATA__');
+    if (el) pp = JSON.parse(el.textContent)?.props?.pageProps;
+  } catch {}
+
+  if (!pp) {
+    try {
+      const r = await fetch(location.href);
+      const html = await r.text();
+      const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+      if (m) pp = JSON.parse(m[1])?.props?.pageProps;
+    } catch {}
+  }
+
+  if (!pp) return { error: 'Page data not found' };
+
+  const runeNameMap = buildRuneNameMap(pp.runes?.subStyle);
+  const fallbackStats = extractStats(pp.firstItemStats?.[Object.keys(pp.firstItemStats || {})[0]]?.all?.popStat);
+  const domRunes = await extractActiveRunesFromDOM(runeNameMap, fallbackStats);
+  const b = buildFromPageProps(pp, pp.champion, selectedFirstKey, domRunes);
+  if (b && !b.error) b.flashSlot = settings.flashSlot || 'D';
+  return b;
+}
+
 // ---- Settings Management ----
-const DEF_SETTINGS = { follow: true, autoBuild: false, autoAccept: false, autoSpell: true };
+const DEF_SETTINGS = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, flashSlot: 'D', apiKey: '', region: 'tr1' };
 let settings = { ...DEF_SETTINGS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('otp.settings') || '{}')); } catch {}
 function saveSettings() {
@@ -429,6 +488,7 @@ async function doImport(auto = false) {
     if (!auto) toast('Build error: ' + (b?.error ?? 'Unknown'), false);
     return;
   }
+  b.flashSlot = settings.flashSlot || 'D';
 
   const res = await ipcRenderer.invoke('otp:import-build', b);
   if (btn) btn.disabled = false;
@@ -493,11 +553,9 @@ function injectHeaderActions() {
   const h1 = document.querySelector('h1');
   if (!h1) return;
 
-  // champBox is the flex container with avatar + title, has align-items:center
+  // champBox is the flex container with avatar + title
   const champBox = h1.parentElement?.parentElement;
   if (!champBox) return;
-  const style = champBox.getAttribute('style') || '';
-  if (!style.includes('align-items:center')) return; // safety check
 
   if (existing && champBox.contains(existing)) return; // already injected
   if (existing) existing.remove();
@@ -560,6 +618,20 @@ function injectHeaderActions() {
         <span class="otp-sw"></span>
       </div>
     </div>
+    <div style="padding:6px 8px;border-top:1px solid rgb(50,53,56);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 8px;user-select:none;">
+        <span style="font-size:12px;color:#e8e6e3;font-weight:500;">Flash Key</span>
+        <div id="otp-flash-group" style="display:inline-flex;background:rgb(15,18,20);border:1px solid rgb(70,75,85);border-radius:4px;overflow:hidden;">
+          <button type="button" class="otp-flash-btn" data-slot="D" style="padding:3px 12px;font-size:11px;font-weight:700;border:none;cursor:pointer;outline:none;transition:all 0.15s ease;">D</button>
+          <button type="button" class="otp-flash-btn" data-slot="F" style="padding:3px 12px;font-size:11px;font-weight:700;border:none;cursor:pointer;outline:none;transition:all 0.15s ease;">F</button>
+        </div>
+      </div>
+      <div style="font-size:11px;color:#9aa3b8;margin:6px 0 4px;">Region</div>
+      <select id="otp-region"
+        style="width:100%;box-sizing:border-box;background:rgb(15,18,20);border:1px solid rgb(85,85,85);border-radius:4px;color:#e8e6e3;font-size:12px;padding:6px;outline:none;">
+        ${['tr1', 'euw1', 'eun1', 'na1', 'br1', 'la1', 'la2', 'kr', 'jp1', 'oc1', 'ru'].map((r) => `<option value="${r}"${settings.region === r ? ' selected' : ''}>${r.toUpperCase()}</option>`).join('')}
+      </select>
+    </div>
     <div id="otp-log" class="otp-popover-log"></div>
   `;
 
@@ -568,7 +640,7 @@ function injectHeaderActions() {
   bar.appendChild(popover);
   champBox.appendChild(bar);
 
-  // Dikey hiza: buton grubunun ortasını h1 başlığının ortasıyla eşitle
+  // Vertical align: center the button group with the h1 title
   requestAnimationFrame(() => {
     try {
       const boxTop = champBox.getBoundingClientRect().top;
@@ -594,6 +666,32 @@ function injectHeaderActions() {
   });
   paintSwitches();
 
+  // Wire up Flash key buttons
+  const paintFlashBtns = () => {
+    const cur = (settings.flashSlot || 'D').toUpperCase();
+    bar.querySelectorAll('.otp-flash-btn').forEach(btn => {
+      const isSel = btn.dataset.slot === cur;
+      btn.style.background = isSel ? 'rgb(16, 99, 183)' : 'transparent';
+      btn.style.color = isSel ? '#ffffff' : '#8f96a3';
+    });
+  };
+  bar.querySelectorAll('.otp-flash-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      settings.flashSlot = btn.dataset.slot;
+      saveSettings();
+      paintFlashBtns();
+      toast(`Flash assigned to ${settings.flashSlot} key`);
+    };
+  });
+  paintFlashBtns();
+
+  const regSel = bar.querySelector('#otp-region');
+  if (regSel) {
+    regSel.onclick = (e) => e.stopPropagation();
+    regSel.onchange = () => { settings.region = regSel.value; saveSettings(); };
+  }
+
   // Close popover when clicking outside
   document.addEventListener('click', (e) => {
     const pop = document.getElementById('otp-popover');
@@ -608,17 +706,48 @@ function injectHeaderActions() {
 function mountUI() {
   injectStyles();
   injectHeaderActions();
+  injectTierNav();
+  checkPendingAutoImport();
 }
+
+// ---- Instant Auto-Import on any rune / set / filter selection ----
+let _autoImportTimer = null;
+document.addEventListener('click', (e) => {
+  const target = e.target;
+  if (!target) return;
+
+  // Ignore clicks inside our own header bar or popover
+  if (target.closest('#otp-header-actions')) return;
+
+  if (!location.pathname.includes('/champions/builds/')) return;
+
+  // Check if click was inside runes card, starting items, build path, or first-item filter
+  const card = target.closest('.cardBorder') || target.closest('[class*="card"]');
+  const isFilterBtn = target.closest('button, [role="tab"], .builds__tab, div[style*="cursor"]');
+  const isClickable = isFilterBtn || (card && (target.closest('div') || target.tagName === 'IMG' || target.tagName === 'SPAN'));
+
+  if (isClickable && (card || isFilterBtn)) {
+    clearTimeout(_autoImportTimer);
+    _autoImportTimer = setTimeout(async () => {
+      try {
+        await doImport(true);
+      } catch (err) {
+        console.error('[otp] instant auto-import failed:', err);
+      }
+    }, 60);
+  }
+}, true);
 
 // ---- Auto-Import Check upon navigation ----
 function checkPendingAutoImport() {
   try {
     const pending = localStorage.getItem('otp.pendingAuto');
+    if (!pending) return;
     const m = location.pathname.match(/\/champions\/builds\/([^/]+)/i);
-    if (pending && m && m[1].toLowerCase() === pending.toLowerCase() && settings.autoBuild) {
+    if (m && m[1].toLowerCase() === pending.toLowerCase() && settings.autoBuild) {
       localStorage.removeItem('otp.pendingAuto');
       lastAutoImport = pending.toLowerCase();
-      setTimeout(() => doImport(true), 2500);
+      setTimeout(() => doImport(true), 350);
     }
   } catch {}
 }
@@ -631,30 +760,139 @@ async function refreshLcuStatus() {
   } catch {}
 }
 
-// ---- Champion Select Listener ----
-ipcRenderer.on('otp:auto-champ', (_e, name) => {
+// ---- Champion Select Listener: Instant Auto-Import ----
+ipcRenderer.on('otp:auto-champ', async (_e, info) => {
+  const name = typeof info === 'string' ? info : info?.name;
   if (!name) return;
-  const target = `/champions/builds/${name}`.toLowerCase();
-  const here = location.pathname.toLowerCase() === target;
+  const want = name.toLowerCase();
 
-  if (settings.autoBuild && lastAutoImport !== name.toLowerCase()) {
-    lastAutoImport = name.toLowerCase();
-    if (here) {
-      setTimeout(() => doImport(true), 2000);
-    } else {
-      try { localStorage.setItem('otp.pendingAuto', name); } catch {}
-      if (settings.follow) {
-        toast(`Picked: ${name} -> Importing build`);
-        setTimeout(() => {
-          location.href = `https://www.onetricks.gg/champions/builds/${encodeURIComponent(name)}`;
-        }, 800);
-      }
+  // If already on the page for this champion, import directly from the page!
+  const isCur = location.pathname.toLowerCase().includes(`/champions/builds/${want}`);
+  if (isCur) {
+    if (settings.autoBuild && lastAutoImport !== want) {
+      lastAutoImport = want;
+      doImport(true);
     }
-  } else if (settings.follow && !here) {
-    toast(`Picked: ${name} -> Navigating to build`);
-    setTimeout(() => {
+    return;
+  }
+
+  // Not on this champion's page yet: save pending import
+  if (settings.autoBuild && lastAutoImport !== want) {
+    lastAutoImport = want;
+    try { localStorage.setItem('otp.pendingAuto', want); } catch {}
+  }
+
+  // Navigate if follow is enabled
+  if (settings.follow) {
+    const target = `/champions/builds/${want}`;
+    if (!location.pathname.toLowerCase().includes(target)) {
       location.href = `https://www.onetricks.gg/champions/builds/${encodeURIComponent(name)}`;
-    }, 800);
+    }
+  }
+});
+
+// ---- Tier List: hide PRO badges, themed Tier button + overlay, remove ad slots ----
+const TIER_CSS = `
+.pro-badge{display:none !important}
+a.pro-btn,button.pro-btn{display:none !important}
+.header-menu-btn, .home-header-menu-btn{display:none !important}
+a[href*="discord"]{display:none !important}
+#otp-tiernav,#otp-sumnav{cursor:pointer}
+#ad-slot,[id="ad-slot"],.vm-placement,[class*="vm-placement"],div:has(>.vm-placement),div:has(>div>.vm-placement){display:none !important;height:0 !important;min-height:0 !important;max-height:0 !important;margin:0 !important;padding:0 !important;opacity:0 !important;pointer-events:none !important;visibility:hidden !important;}
+`;
+
+function injectTierNav() {
+  if (!document.getElementById('otp-tier-css')) {
+    const st = document.createElement('style');
+    st.id = 'otp-tier-css';
+    st.textContent = TIER_CSS;
+    document.head.appendChild(st);
+  }
+  const header = document.querySelector('header');
+  if (!header) return;
+
+  header.querySelectorAll('a[href*="login" i], a[href*="signin" i], a[href*="account" i], button[aria-label*="account" i], button[aria-label*="login" i]').forEach((el) => {
+    el.style.display = 'none';
+  });
+
+  // Find site's existing Tier List link in header
+  const origTier = Array.from(header.querySelectorAll('a')).find((a) =>
+    a.id === 'otp-tiernav' || (!a.id && /tier\s*list/i.test(a.textContent || ''))
+  );
+
+  if (origTier) {
+    origTier.id = 'otp-tiernav';
+    origTier.removeAttribute('aria-describedby');
+    origTier.style.cursor = 'pointer';
+    origTier.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try { ipcRenderer.send('otp:open-tier'); } catch {}
+    };
+
+    if (!document.getElementById('otp-sumnav')) {
+      const sb = document.createElement('a');
+      sb.id = 'otp-sumnav';
+      sb.className = origTier.className || 'header-btns';
+      sb.href = 'javascript:void(0)';
+      sb.onclick = (e) => {
+        e.preventDefault();
+        try { ipcRenderer.send('otp:open-summoner'); } catch {}
+      };
+
+      const parent = origTier.parentElement;
+      const isGap = parent && getComputedStyle(parent).gap && getComputedStyle(parent).gap !== 'normal';
+      if (isGap) {
+        sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;display:inline-flex;align-items:center;white-space:nowrap;margin:0 !important;';
+        sb.innerHTML = '<div style="color:var(--text);">Summoner</div>';
+      } else {
+        sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;display:inline-block;margin:0;';
+        sb.innerHTML = '<div style="color:var(--text);display:inline-block;">Summoner</div>';
+      }
+      origTier.after(sb);
+    }
+    return;
+  }
+
+  if (document.getElementById('otp-tiernav')) return;
+
+  // Fallback if site had no Tier List link
+  const navLink = header.querySelector('a[href*="champions"], a[href*="leaderboard"], a[href*="multisearch"], a[href*="discover"], nav a');
+  const anchor = navLink ? (navLink.parentElement?.lastElementChild || navLink) : null;
+  if (!anchor || !anchor.parentElement) return;
+
+  const btn = document.createElement('a');
+  btn.id = 'otp-tiernav';
+  btn.textContent = 'Tier List';
+  btn.href = 'javascript:void(0)';
+  btn.className = anchor.className || 'header-btns';
+  btn.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;margin-left:16px;';
+  btn.onclick = (e) => { e.preventDefault(); try { ipcRenderer.send('otp:open-tier'); } catch {} };
+
+  const sb = document.createElement('a');
+  sb.id = 'otp-sumnav';
+  sb.textContent = 'Summoner';
+  sb.href = 'javascript:void(0)';
+  sb.className = anchor.className || 'header-btns';
+  sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;margin-left:16px;';
+  sb.onclick = (e) => { e.preventDefault(); try { ipcRenderer.send('otp:open-summoner'); } catch {} };
+
+  anchor.parentElement.appendChild(btn);
+  anchor.parentElement.appendChild(sb);
+}
+
+// If main already imported (fast auto import), skip own flow, just notify
+ipcRenderer.on('otp:auto-imported', (_e, info) => {
+  if (!info) return;
+  if (info.name) {
+    lastAutoImport = info.name.toLowerCase();
+    try { localStorage.removeItem('otp.pendingAuto'); } catch {}
+    const logEl = document.getElementById('otp-log');
+    if (logEl) logEl.textContent = `${info.name} ✓ runes+items${info.spells ? '+spells' : ''} (auto)`;
+    toast(`Auto imported: ${info.name}`);
+  } else if (info.error) {
+    const logEl = document.getElementById('otp-log');
+    if (logEl) logEl.textContent = 'Auto error: ' + info.error;
   }
 });
 
@@ -662,19 +900,46 @@ ipcRenderer.on('otp:auto-champ', (_e, name) => {
 // contextBridge must be called synchronously at top-level
 contextBridge.exposeInMainWorld('otp', { parseBuild, doImport });
 
+let _lastPath = location.pathname;
+let _mountTimeout = null;
+
+function requestMountUI(delay = 100) {
+  clearTimeout(_mountTimeout);
+  _mountTimeout = setTimeout(() => {
+    mountUI();
+  }, delay);
+}
+
 // Defer DOM manipulation until the document is ready
 window.addEventListener('DOMContentLoaded', () => {
+  // Push settings to main process once on load
+  try { saveSettings(); } catch {}
+
   setTimeout(() => {
     mountUI();
     checkPendingAutoImport();
     refreshLcuStatus();
-  }, 500);
+  }, 350);
 
-  // Re-inject UI when React re-renders the page (SPA navigation)
+  // Re-inject UI only when URL changes or required elements are missing
   new MutationObserver(() => {
-    mountUI();
-  }).observe(document.documentElement, { childList: true, subtree: true });
+    const isBuild = location.pathname.includes('/champions/builds/');
+    const pathChanged = location.pathname !== _lastPath;
+
+    if (pathChanged) {
+      _lastPath = location.pathname;
+      requestMountUI(50);
+      return;
+    }
+
+    const needsHeader = isBuild && !document.getElementById('otp-header-actions');
+    const needsTier = !document.getElementById('otp-tiernav') || !document.getElementById('otp-sumnav');
+
+    if (needsHeader || needsTier) {
+      requestMountUI(120);
+    }
+  }).observe(document.body || document.documentElement, { childList: true, subtree: true });
 });
 
 // Periodically refresh LCU connection status
-setInterval(refreshLcuStatus, 4000);
+setInterval(refreshLcuStatus, 5000);

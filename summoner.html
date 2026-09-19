@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Summoner — OTP Client</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background-color: #0f1015;
+    background-image:
+      linear-gradient(rgba(15, 16, 21, 0.94), rgba(15, 16, 21, 0.97)),
+      url("https://ddragon.leagueoflegends.com/cdn/15.1.1/img/champion/splash/Riven_0.jpg"),
+      linear-gradient(180deg, #0f1015 0%, #151720 100%);
+    background-position: center top;
+    background-size: cover;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    color: #e8e6e3;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+  #otp-wrap { max-width: 1040px; margin: 0 auto; padding: 20px 20px 60px; }
+  #otp-top { display: flex; align-items: center; gap: 10px; margin: 4px 0 16px; }
+  #otp-top h1 { font-size: 20px; margin: 0; flex: 1; font-weight: 700; color: #f3f4f6; }
+  #otp-back {
+    background: #16181f;
+    border: 1px solid #282b36;
+    color: #e8e6e3;
+    border-radius: 6px;
+    font-size: 14px;
+    padding: 4px 12px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  #otp-back:hover { background: #1063b7; border-color: #1063b7; color: #fff; }
+
+  /* Hero Section */
+  #otp-hero { text-align: center; padding: 24px 0 12px; }
+  #otp-hero h2 {
+    font-size: 24px;
+    margin: 0 0 16px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.3px;
+  }
+
+  /* OneTricks + DeepLoL Pill Search Bar */
+  #otp-sbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 620px;
+    margin: 0 auto;
+    background: #16181f;
+    border: 1px solid #282b36;
+    border-radius: 9999px;
+    padding: 5px 6px 5px 8px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  #otp-sbar:hover {
+    border-color: #383d4c;
+  }
+  #otp-sbar:focus-within {
+    border-color: #1063b7;
+    box-shadow: 0 0 0 2px rgba(16, 99, 183, 0.35);
+  }
+
+  /* Region badge + dropdown — custom, no native select */
+  #otp-sregbtn {
+    background-color: #1c2333;
+    border: 1px solid #2e3a52;
+    border-radius: 999px;
+    color: #7fb3ff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    padding: 5px 11px;
+    cursor: pointer;
+    outline: none;
+    min-width: 56px;
+  }
+  #otp-sregbtn:hover { border-color: rgb(16, 99, 183); color: #a8ccff; }
+  #otp-reglist {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 50;
+    background: #12161d;
+    border: 1px solid #2a3348;
+    border-radius: 8px;
+    padding: 4px;
+    min-width: 110px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  }
+  #otp-reglist.open { display: block; }
+  #otp-reglist div {
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 5px;
+    cursor: pointer;
+    color: #e8e6e3;
+  }
+  #otp-reglist div:hover { background: rgb(16,99,183); color: #fff; }
+  #otp-reglist div.sel { color: rgb(110,180,255); }
+
+  /* Search Input */
+  #otp-sinput {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    color: #f3f4f6;
+    font-size: 14px;
+    font-family: inherit;
+    padding: 8px 8px;
+    outline: none;
+  }
+  #otp-sinput::placeholder {
+    color: #656c80;
+  }
+
+  /* Search Button */
+  #otp-sgo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: #8f96a3;
+    padding: 6px 12px;
+    cursor: pointer;
+    flex-shrink: 0;
+    outline: none;
+    transition: color 0.15s ease;
+  }
+  #otp-sgo:hover { color: #f3f4f6; }
+  #otp-sgo * { pointer-events: none; }
+
+  /* Sub Bar (Lobby) */
+  #otp-subbar {
+    display: flex;
+    justify-content: center;
+    margin-top: 10px;
+  }
+  #otp-slobby {
+    background: #16181f;
+    border: 1px solid #282b36;
+    color: #8f96a3;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 14px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+  }
+  #otp-slobby:hover {
+    background: #1c1f28;
+    border-color: #8f96a3;
+    color: #ffffff;
+  }
+  #otp-slobby * { pointer-events: none; }
+
+  /* Recent Chips */
+  #otp-recent {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin: 14px 0 4px;
+    min-height: 10px;
+  }
+  .otp-chip {
+    background: #16181f;
+    border: 1px solid #282b36;
+    color: #e8e6e3;
+    border-radius: 9999px;
+    padding: 4px 10px 4px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: border-color 0.15s, background-color 0.15s;
+  }
+  .otp-chip:hover {
+    border-color: #1063b7;
+    background: #1c1f28;
+  }
+  .otp-chip .rg {
+    background: #1063b7;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 7px;
+    color: #fff;
+  }
+  .otp-chip .x { color: #656c80; padding: 0 2px; }
+  .otp-chip .x:hover { color: #ef4444; }
+
+  /* Queue Tabs & Refresh */
+  #otp-qtabs { display: none; gap: 6px; margin: 18px 0 6px; }
+  #otp-qtabs.show { display: flex; }
+  .otp-qtab {
+    background: #16181f;
+    border: 1px solid #282b36;
+    color: #e8e6e3;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .otp-qtab:hover { border-color: #4a536b; color: #fff; }
+  .otp-qtab.sel {
+    background: #1063b7;
+    border-color: #1063b7;
+    color: #fff;
+  }
+  #otp-refresh {
+    display: none;
+    margin: 10px 0 0 auto;
+    background: #16181f;
+    border: 1px solid #282b36;
+    color: #8f96a3;
+    border-radius: 6px;
+    font-size: 12px;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  #otp-refresh.show { display: block; }
+  #otp-updated { font-size: 11px; color: #8b93a8; text-align: right; margin: 8px 0 2px; min-height: 14px; }
+  #otp-refresh:hover { color: #fff; border-color: #4a536b; }
+  #otp-refresh.spin { animation: otp-spin 1s linear infinite; }
+  @keyframes otp-spin { to { transform: rotate(360deg); } }
+
+  /* Body Content & Profile Card */
+  #otp-sbody { margin-top: 14px; font-size: 12.5px; }
+  .otp-sprof {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 14px;
+    background: #16181f;
+    border: 1px solid #232631;
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .otp-sprof img {
+    width: 60px;
+    height: 60px;
+    border-radius: 6px;
+    border: 1px solid #282b36;
+  }
+  .otp-sprof b {
+    font-size: 18px;
+    color: #ffffff;
+  }
+  .otp-sprof .lv {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: #8f96a3;
+    background: #12141a;
+    padding: 1px 7px;
+    border-radius: 3px;
+    border: 1px solid #232631;
+  }
+
+  /* DeepLoL AI Score Card */
+  .otp-score {
+    margin-left: auto;
+    text-align: center;
+    background: #12141a;
+    border: 1px solid #232631;
+    border-radius: 6px;
+    padding: 8px 18px;
+    min-width: 140px;
+  }
+  .otp-score b {
+    font-size: 22px;
+    color: #ffd166;
+    line-height: 1.1;
+    display: block;
+  }
+  .otp-score div {
+    font-size: 10.5px;
+    color: #8f96a3;
+    margin-top: 2px;
+  }
+
+  /* Section Titles */
+  .otp-ssec {
+    font-weight: 700;
+    font-size: 12.5px;
+    color: #e8e6e3;
+    margin: 18px 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .otp-ssec::before {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 12px;
+    background: #1063b7;
+    border-radius: 2px;
+  }
+
+  /* Top-level Match Summary Cards */
+  .otp-mrow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 14px;
+    border-radius: 6px;
+    border-left: 3px solid transparent;
+    background: #16181f;
+    margin-bottom: 4px;
+    border-top: 1px solid #232631;
+    border-right: 1px solid #232631;
+    border-bottom: 1px solid #232631;
+    transition: background 0.12s;
+  }
+  .otp-mrow:hover {
+    background: #1c1f28;
+  }
+  .otp-mrow.win {
+    border-left-color: #2563eb;
+    background: #101a2a;
+    border-top-color: #1a2940;
+    border-right-color: #1a2940;
+    border-bottom-color: #1a2940;
+  }
+  .otp-mrow.win:hover { background: #142135; }
+  .otp-mrow.lose {
+    border-left-color: #dc2626;
+    background: #201116;
+    border-top-color: #381820;
+    border-right-color: #381820;
+    border-bottom-color: #381820;
+  }
+  .otp-mrow.lose:hover { background: #28141b; }
+  .otp-mrow img {
+    width: 34px;
+    height: 34px;
+    border-radius: 4px;
+  }
+  .otp-mrow .kda {
+    margin-left: auto;
+    font-weight: 600;
+    color: #e8e6e3;
+    font-size: 13px;
+  }
+  .otp-mrow .sub {
+    font-size: 11.5px;
+    color: #8f96a3;
+  }
+
+  /* Lobby & Multi-Search Rows */
+  .otp-lobrow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    background: #16181f;
+    margin-bottom: 4px;
+    border: 1px solid #232631;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .otp-lobrow:hover, .otp-cand:hover {
+    border-color: #1063b7;
+    background: #1c1f28;
+  }
+
+  /* ==========================================================================
+     EXACT DEEPLOL MATCH BREAKDOWN TABLE (Image 1 Replica)
+     ========================================================================== */
+
+  .otp-dl-card {
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 10px;
+    border: 1px solid #232631;
+    font-size: 12px;
+  }
+
+  /* Team Specific Borders & Backgrounds */
+  .otp-dl-card.side-red {
+    border-color: #3e1a22;
+  }
+  .otp-dl-card.side-red .otp-dl-head {
+    background: #271318;
+    border-bottom: 1px solid #451b23;
+  }
+  .otp-dl-card.side-red .otp-dl-row {
+    background: #1e1115;
+    border-bottom: 1px solid rgba(239, 68, 68, 0.12);
+  }
+  .otp-dl-card.side-red .otp-dl-row:hover {
+    background: #28161c;
+  }
+  .otp-dl-card.side-red .dmg-bar-fill {
+    background: #ef4444;
+  }
+
+  .otp-dl-card.side-blue {
+    border-color: #1a2b44;
+  }
+  .otp-dl-card.side-blue .otp-dl-head {
+    background: #101a2a;
+    border-bottom: 1px solid #1c2e4c;
+  }
+  .otp-dl-card.side-blue .otp-dl-row {
+    background: #0e1623;
+    border-bottom: 1px solid rgba(59, 130, 246, 0.12);
+  }
+  .otp-dl-card.side-blue .otp-dl-row:hover {
+    background: #141f32;
+  }
+  .otp-dl-card.side-blue .dmg-bar-fill {
+    background: #3b82f6;
+  }
+
+  .otp-dl-card .otp-dl-row:last-child {
+    border-bottom: none;
+  }
+
+  /* Header Row */
+  .otp-dl-head {
+    display: grid;
+    grid-template-columns: minmax(210px, 2.2fr) 76px 110px 105px 75px minmax(190px, 2fr);
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    font-size: 11.5px;
+    color: #8f96a3;
+    font-weight: 600;
+  }
+  .otp-dl-head-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .otp-dl-badge {
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    line-height: 1.3;
+    text-transform: capitalize;
+  }
+  .otp-dl-badge.lose {
+    background: #dc2626;
+  }
+  .otp-dl-badge.win {
+    background: #1d4ed8;
+  }
+  .otp-dl-teamname {
+    color: #8f96a3;
+    font-size: 12px;
+  }
+
+  .otp-dl-head-cols {
+    display: contents;
+  }
+  .otp-dl-head-cols .col-ai { text-align: center; }
+  .otp-dl-head-cols .col-kda { text-align: center; }
+  .otp-dl-head-cols .col-dmg { text-align: right; }
+  .otp-dl-head-cols .col-cs { text-align: right; }
+  .otp-dl-head-cols .col-items { text-align: left; }
+
+  /* Player Row (5 per team) */
+  .otp-dl-row {
+    display: grid;
+    grid-template-columns: minmax(210px, 2.2fr) 76px 110px 105px 75px minmax(190px, 2fr);
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    transition: background-color 0.12s ease;
+  }
+
+  /* Column 1: Player Cell */
+  .otp-dl-pcell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+  }
+  .otp-dl-iconwrap {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    flex: none;
+  }
+  .otp-dl-iconwrap .champ-img {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    display: block;
+  }
+  .otp-dl-iconwrap .champ-lvl {
+    position: absolute;
+    bottom: -1px;
+    left: -1px;
+    background: rgba(0, 0, 0, 0.85);
+    color: #ffffff;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 1px 3px;
+    border-radius: 2px;
+  }
+  .otp-dl-tier {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 3px;
+    border: 1px solid #4a5163;
+    color: #8f96a3;
+    line-height: 1.2;
+    flex: none;
+  }
+  .otp-dl-tier.tier-e { border-color: #10b981; color: #10b981; }
+  .otp-dl-tier.tier-d { border-color: #60a5fa; color: #60a5fa; }
+  .otp-dl-tier.tier-m { border-color: #c084fc; color: #c084fc; }
+  .otp-dl-tier.tier-g { border-color: #f59e0b; color: #f59e0b; }
+  .otp-dl-tier.tier-s { border-color: #94a3b8; color: #cbd5e1; }
+  .otp-dl-tier.tier-b { border-color: #b45309; color: #d97706; }
+  .otp-dl-tier.tier-i { border-color: #64748b; color: #94a3b8; }
+
+  .otp-dl-namebox {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+  }
+  .otp-dl-namebox .p-name {
+    font-weight: 700;
+    color: #f3f4f6;
+    font-size: 12.5px;
+  }
+  .otp-dl-namebox .p-name.otp-plink { cursor: pointer; }
+  .otp-dl-namebox .p-name.otp-plink:hover { color: #6cb2ff; text-decoration: underline; }
+  .otp-dl-namebox .p-tag {
+    color: #656c80;
+    font-size: 11px;
+    font-weight: normal;
+  }
+  .otp-dl-namebox .p-champ {
+    font-size: 11px;
+    color: #8f96a3;
+  }
+
+  /* Column 2: AI-Score Cell */
+  .otp-dl-aicell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .otp-dl-aiscore-badge {
+    min-width: 28px;
+    text-align: center;
+    font-weight: 800;
+    font-size: 12px;
+    border-radius: 4px;
+    padding: 2px 6px;
+    display: inline-block;
+    line-height: 1.3;
+  }
+  .otp-dl-rank {
+    font-size: 11px;
+    color: #8f96a3;
+    white-space: nowrap;
+  }
+  .otp-dl-rank.mvp {
+    color: #ffd166;
+    font-weight: 700;
+  }
+
+  /* Column 3: KDA Cell */
+  .otp-dl-kdacell {
+    text-align: center;
+    line-height: 1.3;
+  }
+  .otp-dl-kdacell .kda-nums {
+    font-weight: 700;
+    color: #f3f4f6;
+    font-size: 12px;
+  }
+  .otp-dl-kdacell .kda-ratio {
+    font-size: 11px;
+    color: #8f96a3;
+  }
+  .otp-dl-kdacell .kda-ratio.high {
+    color: #f59e0b;
+    font-weight: 700;
+  }
+
+  /* Column 4: Damage Cell */
+  .otp-dl-dmgcell {
+    text-align: right;
+    line-height: 1.3;
+  }
+  .otp-dl-dmgcell .dmg-num {
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    color: #e8e6e3;
+    font-weight: 600;
+  }
+  .otp-dl-dmgcell .dmg-bar-bg {
+    height: 3px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    margin-top: 3px;
+    overflow: hidden;
+    width: 64px;
+    margin-left: auto;
+  }
+  .otp-dl-dmgcell .dmg-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+  }
+
+  /* Column 5: CS Cell */
+  .otp-dl-cscell {
+    text-align: right;
+    line-height: 1.3;
+  }
+  .otp-dl-cscell .cs-num {
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    color: #e8e6e3;
+    font-weight: 600;
+  }
+  .otp-dl-cscell .cs-pm {
+    font-size: 10.5px;
+    color: #8f96a3;
+  }
+
+  /* Column 6: Items Cell */
+  .otp-dl-itemscell {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .otp-dl-item {
+    width: 24px;
+    height: 24px;
+    border-radius: 3px;
+    display: block;
+    flex: none;
+  }
+  .otp-dl-item.empty {
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(0, 0, 0, 0.28);
+  }
+  .otp-dl-item.trinket {
+    margin-left: 2px;
+  }
+
+  .otp-serr { padding: 24px; text-align: center; color: #8f96a3; }
+  .otp-serr a { color: #6cb2ff; }
+  #otp-foot { margin-top: 18px; font-size: 11px; color: #656c80; text-align: center; }
+</style>
+</head>
+<body>
+<div id="otp-wrap">
+  <div id="otp-top"><button id="otp-back" title="Back">←</button><h1>Summoner Lookup</h1></div>
+  <div id="otp-hero">
+    <h2>Whose game are we checking?</h2>
+    <div id="otp-sbar">
+      <span id="otp-regwrap" style="position:relative;flex:none;">
+        <button id="otp-sregbtn" title="Select Region">TR ▾</button>
+        <div id="otp-reglist"></div>
+      </span>
+      <input id="otp-sinput" placeholder="Summoners + #TAG" autocomplete="off">
+      <svg id="otp-sgoicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9aa3b8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-right:8px;cursor:pointer;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+    </div>
+    <div id="otp-subbar">
+      <button id="otp-slobby" class="ghost" title="Whole lobby in champion select">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <span>Lobby</span>
+      </button>
+    </div>
+    <div id="otp-recent"></div>
+  </div>
+  <div id="otp-qtabs"></div>
+  <div id="otp-updated"></div>
+  <button id="otp-refresh" title="Refresh profile">⟳ Refresh</button>
+  <div id="otp-sbody"></div>
+  <div id="otp-foot">Keyless lookup · Data: deeplol · Click a match for both teams</div>
+</div>
+</body>
+</html>
