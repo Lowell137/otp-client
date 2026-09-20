@@ -139,11 +139,19 @@ async function extractActiveRunesFromDOM(runeNameMap, fallbackStats) {
         }
         if (!runesCard) return null;
 
-        // Find active tab and its panel
+        // Find active tab and its panel — prefer a real tabpanel so header
+        // mini-icons (keystone + "53%" row) never pollute the rune list.
         const tabs = Array.from(runesCard.querySelectorAll('[role="tab"]'));
         const activeTab = tabs.find(t => t.getAttribute('aria-selected') === 'true') || tabs[0];
         const panelId = activeTab?.getAttribute('aria-controls');
-        const panel = (panelId ? document.getElementById(panelId) : null) || runesCard;
+        let panel = panelId ? document.getElementById(panelId) : null;
+        if (!panel) {
+          const tps = Array.from(runesCard.querySelectorAll('[role="tabpanel"]'));
+          panel = tps.find(p => p.offsetParent !== null) || tps[0] || null;
+        }
+        const headerScope = runesH?.parentElement || null;
+        const useWholeCard = !panel;
+        if (!panel) panel = runesCard;
         const activeTabIdx = Math.max(0, tabs.indexOf(activeTab));
         const tabLabel = activeTab?.textContent?.trim() || 'Set 1';
 
@@ -155,6 +163,8 @@ async function extractActiveRunesFromDOM(runeNameMap, fallbackStats) {
         for (const ic of icons) {
           const cs = getComputedStyle(ic);
           if (cs.filter && cs.filter.includes('grayscale')) continue;
+          // Whole-card fallback: skip header-row icons (keystone + "53%" labels)
+          if (useWholeCard && headerScope && headerScope.contains(ic)) continue;
           const html = ic.getAttribute('data-tooltip-html') || '';
           const m = html.match(/<b>(.*?)<\\/b>/i);
           if (m) {
@@ -249,9 +259,15 @@ function buildFromPageProps(pp, champion, selectedFirstKey = 'all', domRunes = n
 
   let runes = domRunes;
   if (!runes) {
+    // Selected first-item group may have no rune stats (e.g. item-specific tab) —
+    // fall back to the 'all' group's popRunes instead of failing.
+    let runeSource = group.popRunes;
+    if ((!runeSource || !Object.keys(runeSource).length) && byFirst.all && byFirst.all !== group) {
+      runeSource = byFirst.all.popRunes;
+    }
     let bestKeystone = null;
     let bestVariant = null;
-    for (const [k, variants] of Object.entries(group.popRunes || {})) {
+    for (const [k, variants] of Object.entries(runeSource || {})) {
       for (const v of variants || []) {
         if (!bestVariant || v[1] > bestVariant[1]) {
           bestVariant = v;
@@ -503,10 +519,13 @@ async function doImport(auto = false) {
 
   const logEl = document.getElementById('otp-log');
   if (res.ok) {
-    const parts = ['Runes', 'Items', res.spells ? 'Spells' : null].filter(Boolean).join(' + ');
+    // Only claim what actually succeeded (main reports per-part results)
+    const parts = [res.rune ? 'Runes' : null, res.items ? 'Items' : null, res.spells ? 'Spells' : null].filter(Boolean);
+    const failed = [res.rune ? null : ('Runes: ' + (res.runeError || 'failed')), res.items ? null : ('Items: ' + (res.itemError || 'failed'))].filter(Boolean);
     const rateText = b.rate ? ` (${(b.rate * 100).toFixed(0)}% WR)` : '';
-    if (logEl) logEl.textContent = `${b.champion} \u2713 ${parts}${rateText}`;
-    toast(`Imported: ${b.champion} (${parts})`);
+    if (logEl) logEl.textContent = `${b.champion} ✓ ${parts.join(' + ') || 'nothing'}${rateText} [${b.runes?.source || 'static'}]${failed.length ? ' | FAILED: ' + failed.join('; ') : ''}`;
+    if (failed.length) toast(`Imported ${parts.join(' + ') || 'nothing'} — FAILED: ${failed.join('; ')}`, false);
+    else toast(`Imported: ${b.champion} (${parts.join(' + ')})`);
   } else {
     if (logEl) logEl.textContent = 'Error: ' + res.error;
     toast('Import failed: ' + res.error, false);

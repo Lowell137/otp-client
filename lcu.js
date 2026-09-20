@@ -247,7 +247,9 @@ function registerIpc(ipcMain) {
         ok: true,
         rune: runeOk ? (runeRes.value?.name ?? 'ok') : null,
         items: itemOk ? (itemRes.value?.title ?? 'ok') : null,
-        spells: spellOk ? spellRes.value : null
+        spells: spellOk ? spellRes.value : null,
+        runeError: runeOk ? null : String(runeRes.reason?.message ?? runeRes.reason ?? 'unknown'),
+        itemError: itemOk ? null : String(itemRes.reason?.message ?? itemRes.reason ?? 'unknown')
       };
     } catch (e) {
       return { ok: false, error: String(e?.message ?? e) };
