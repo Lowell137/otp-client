@@ -11,9 +11,9 @@
     min-height: 100vh;
     background-color: #0f1015;
     background-image:
-      linear-gradient(rgba(15, 16, 21, 0.94), rgba(15, 16, 21, 0.97)),
-      url("https://ddragon.leagueoflegends.com/cdn/15.1.1/img/champion/splash/Riven_0.jpg"),
-      linear-gradient(180deg, #0f1015 0%, #151720 100%);
+      linear-gradient(rgba(10, 12, 16, 0.88), rgba(13, 15, 20, 0.94)),
+      url("https://ddragon.leagueoflegends.com/cdn/img/champion/splash/Camille_31.jpg"),
+      linear-gradient(180deg, #0d1017 0%, #0f1115 60%, #0d0f14 100%);
     background-position: center top;
     background-size: cover;
     background-attachment: fixed;
@@ -23,7 +23,7 @@
     font-size: 13px;
     -webkit-font-smoothing: antialiased;
   }
-  #otp-wrap { max-width: 1040px; margin: 0 auto; padding: 20px 20px 60px; }
+  #otp-wrap { max-width: 1180px; margin: 0 auto; padding: 16px 20px 60px; }
   #otp-top { display: flex; align-items: center; gap: 10px; margin: 4px 0 16px; }
   #otp-top h1 { font-size: 20px; margin: 0; flex: 1; font-weight: 700; color: #f3f4f6; }
   #otp-back {
@@ -279,26 +279,158 @@
     border: 1px solid #232631;
   }
 
-  /* DeepLoL AI Score Card */
-  .otp-score {
-    margin-left: auto;
-    text-align: center;
+  /* DeepLoL Style Stats Summary Block */
+  .otp-dl-summary-box {
+    display: flex;
+    align-items: stretch;
     background: #12141a;
     border: 1px solid #232631;
-    border-radius: 6px;
-    padding: 8px 18px;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    gap: 16px;
+  }
+  .otp-sum-col-main {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-right: 16px;
+    border-right: 1px solid #232631;
+    min-width: 320px;
+  }
+  .otp-sum-circle {
+    width: 68px;
+    height: 68px;
+    border-radius: 50%;
+    border: 4px solid #10b981;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 15px;
+    color: #f3f4f6;
+    flex-shrink: 0;
+  }
+  .otp-sum-details {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+  }
+  .otp-sum-row-top {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .otp-sum-games {
+    font-size: 14px;
+    font-weight: 700;
+    color: #f3f4f6;
+  }
+  .otp-sum-kda {
+    font-size: 12px;
+    font-weight: 700;
+    color: #60a5fa;
+  }
+  .otp-sum-score {
+    font-size: 14px;
+    font-weight: 800;
+    color: #ffd166;
+    margin-left: auto;
+  }
+  .otp-sum-row-sub {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 11px;
+    color: #8f96a3;
+  }
+  .otp-sum-row-badges {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .otp-sum-badge-card {
+    background: #181c26;
+    border: 1px solid #282e3f;
+    border-radius: 5px;
+    padding: 3px 8px;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .otp-sum-col-champs {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 16px;
+    border-right: 1px solid #232631;
+    min-width: 220px;
+  }
+  .otp-sum-champ-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .otp-sum-champ-row img {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+  }
+  .otp-sum-champ-meta {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+    font-size: 11px;
+  }
+  .otp-sum-champ-kda {
+    font-size: 10px;
+    color: #8f96a3;
+  }
+
+  .otp-sum-col-roles {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    padding-left: 8px;
+    flex: 1;
     min-width: 140px;
   }
-  .otp-score b {
-    font-size: 22px;
-    color: #ffd166;
-    line-height: 1.1;
-    display: block;
-  }
-  .otp-score div {
-    font-size: 10.5px;
+  .otp-roles-title {
+    font-size: 11px;
+    font-weight: 700;
     color: #8f96a3;
-    margin-top: 2px;
+  }
+  .otp-roles-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    height: 48px;
+    padding-bottom: 4px;
+  }
+  .otp-role-bar-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+  }
+  .otp-role-bar {
+    width: 8px;
+    border-radius: 3px;
+    background: #2563eb;
+    min-height: 4px;
+    transition: height 0.2s ease;
+  }
+  .otp-role-icon {
+    font-size: 10px;
+    color: #8f96a3;
+    font-weight: 600;
   }
 
   /* Section Titles */
@@ -322,16 +454,83 @@
     border-radius: 2px;
   }
 
-  /* Top-level Match Summary Cards */
-  .otp-mrow {
+  /* DeepLoL 2-Column Layout */
+  .otp-dl-grid {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 16px;
+    margin-top: 14px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .otp-dl-grid { grid-template-columns: 1fr; }
+  }
+
+  /* Left Sidebar Cards */
+  .otp-side-card {
+    background: #16181f;
+    border: 1px solid #232631;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+  .otp-side-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #8f96a3;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+  }
+  .otp-side-champ {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 9px 14px;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid #1f232e;
+  }
+  .otp-side-champ:last-child { border-bottom: none; }
+  .otp-side-champ img {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+  }
+  .otp-side-champ-name {
+    font-weight: 600;
+    font-size: 12px;
+    color: #f3f4f6;
+  }
+  .otp-side-champ-kda {
+    font-size: 10.5px;
+    color: #8f96a3;
+  }
+  .otp-side-champ-right {
+    margin-left: auto;
+    text-align: right;
+  }
+  .otp-side-champ-wr {
+    font-weight: 700;
+    font-size: 11.5px;
+  }
+  .otp-side-champ-count {
+    font-size: 10.5px;
+    color: #656c80;
+  }
+
+  /* DeepLoL Match Row */
+  .otp-mrow {
+    display: grid;
+    grid-template-columns: 85px 140px 1fr 140px 110px 90px;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
     border-radius: 6px;
-    border-left: 3px solid transparent;
+    border-left: 4px solid transparent;
     background: #16181f;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     border-top: 1px solid #232631;
     border-right: 1px solid #232631;
     border-bottom: 1px solid #232631;
@@ -356,21 +555,93 @@
     border-bottom-color: #381820;
   }
   .otp-mrow.lose:hover { background: #28141b; }
-  .otp-mrow img {
-    width: 34px;
-    height: 34px;
-    border-radius: 4px;
+
+  .otp-m-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   }
-  .otp-mrow .kda {
-    margin-left: auto;
-    font-weight: 600;
-    color: #e8e6e3;
-    font-size: 13px;
-  }
-  .otp-mrow .sub {
+  .otp-m-queue {
+    font-weight: 700;
     font-size: 11.5px;
+    color: #f3f4f6;
+  }
+  .otp-m-time {
+    font-size: 10px;
     color: #8f96a3;
   }
+  .otp-m-result {
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .otp-m-result.win { color: #60a5fa; }
+  .otp-m-result.lose { color: #f87171; }
+
+  .otp-m-champbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .otp-m-champbox img.champ-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+  }
+  .otp-m-spells-runes {
+    display: grid;
+    grid-template-columns: 16px 16px;
+    gap: 2px;
+  }
+  .otp-m-spells-runes img {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+  }
+
+  .otp-m-kda {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.25;
+  }
+  .otp-m-kda-nums {
+    font-weight: 700;
+    color: #f3f4f6;
+    font-size: 12.5px;
+  }
+  .otp-m-kda-ratio {
+    font-size: 11px;
+    color: #8f96a3;
+  }
+
+  .otp-m-ai {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .otp-m-tagbox {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .otp-m-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .otp-m-tag.tag-mvp { background: #ffd166; color: #111; }
+  .otp-m-tag.tag-ace { background: #9333ea; color: #fff; }
+  .otp-m-tag.tag-godlike { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+  .otp-m-tag.tag-solid { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+  .otp-m-tag.tag-balanced { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+  .otp-m-tag.tag-messy { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
 
   /* Lobby & Multi-Search Rows */
   .otp-lobrow {
@@ -709,7 +980,7 @@
   <div id="otp-updated"></div>
   <button id="otp-refresh" title="Refresh profile">⟳ Refresh</button>
   <div id="otp-sbody"></div>
-  <div id="otp-foot">Keyless lookup · Data: deeplol · Click a match for both teams</div>
-</div>
+<div id="otp-foot">Keyless lookup · Data: deeplol · Click a match for both teams</div>
+  </div>
 </body>
 </html>

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OTP Overlay</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; user-select: none; }
+    #overlay-root { width: 100%; height: 100%; position: relative; }
+    #tracker { position: absolute; top: 46px; right: 10px; background: rgba(9, 11, 15, 0.88); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 5px 6px; backdrop-filter: blur(6px); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6); }
+    #tracker-head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 4px; -webkit-app-region: drag; cursor: move; }
+    #tracker-head .t { font-size: 9px; font-weight: 800; letter-spacing: 0.8px; color: #8f96a3; }
+    #tracker-head .grip { color: #4a5163; font-size: 10px; letter-spacing: 1px; margin-right: 4px; }
+    #tracker-head .clock { font-size: 10px; font-weight: 700; color: #e8ecf1; font-variant-numeric: tabular-nums; margin-left: auto; }
+    .erow { display: flex; align-items: center; gap: 3px; padding: 2px 0; -webkit-app-region: no-drag; }
+    .erow + .erow { border-top: 1px solid rgba(255, 255, 255, 0.05); }
+    .cell { position: relative; width: 30px; height: 30px; border-radius: 5px; overflow: hidden; background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(255, 255, 255, 0.09); }
+    .cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .cell.click { cursor: pointer; }
+    .cell.click:hover { border-color: rgba(47, 111, 237, 0.8); }
+    .cell .key { position: absolute; bottom: 0; right: 2px; font-size: 8px; font-weight: 800; color: #fff; text-shadow: 0 0 3px #000; z-index: 3; line-height: 1.2; }
+    .cell .cd { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.8); display: none; align-items: center; justify-content: center; font-weight: 800; color: #ffd700; font-size: 11px; font-variant-numeric: tabular-nums; text-shadow: 0 0 4px #000; z-index: 2; }
+    .cell.running .cd { display: flex; }
+    .cell.ult { display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #3b1d5e, #1c1030); }
+    .cell.ult span.r { font-size: 13px; font-weight: 800; color: #c084fc; }
+    .hidden { display: none !important; }
+    .settings-btn { position: fixed; bottom: 12px; right: 12px; width: 30px; height: 30px; border-radius: 50%; background: rgba(20, 24, 32, 0.9); border: 1px solid rgba(255, 255, 255, 0.15); color: #8f96a3; font-size: 14px; cursor: pointer; z-index: 1000; }
+    .settings-btn:hover { color: #fff; border-color: rgba(47, 111, 237, 0.7); }
+    .settings-menu { position: fixed; bottom: 50px; right: 12px; background: rgba(13, 16, 22, 0.98); border: 1px solid rgba(47, 111, 237, 0.3); border-radius: 10px; padding: 10px 12px; min-width: 180px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7); z-index: 1000; display: none; }
+    .settings-menu.open { display: block; }
+    .settings-menu .hint { font-size: 11px; color: #b9c0cf; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div id="overlay-root">
+    <div id="tracker" class="hidden">
+      <div id="tracker-head"><span class="grip">⋮⋮</span><span class="t">ENEMY</span><span class="clock" id="clock">0:00</span></div>
+      <div id="rows"></div>
+    </div>
+    <button class="settings-btn" id="settings-btn" title="Ayarlar">⚙</button>
+    <div class="settings-menu" id="settings-menu">
+      <div class="hint">Spelle tıkla = sayaç başlar.<br>Tekrar tıkla = iptal.<br>Ulti süresi baz (R1) süredir.</div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const API = window.otpOverlayAPI;
+      if (!API) return;
+      const tracker = document.getElementById('tracker');
+      const rowsBox = document.getElementById('rows');
+      const clockEl = document.getElementById('clock');
+      const settingsBtn = document.getElementById('settings-btn');
+      const settingsMenu = document.getElementById('settings-menu');
+
+      // slots: "name:slot" -> { el, cdEl, cd }
+      const slots = new Map();
+      // timers: "name:slot" -> { remaining, interval }
+      const timers = new Map();
+
+      function fmt(s) {
+        s = Math.max(0, Math.ceil(s));
+        const m = Math.floor(s / 60), r = s % 60;
+        return m > 0 ? `${m}:${String(r).padStart(2, '0')}` : `${r}`;
+      }
+      function fmtClock(s) {
+        if (s == null) return '--:--';
+        s = Math.max(0, Math.floor(s));
+        return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+      }
+      function stopTimer(key) {
+        const t = timers.get(key);
+        if (t) { clearInterval(t.interval); timers.delete(key); }
+      }
+      function paint(key) {
+        const s = slots.get(key);
+        if (!s) return;
+        const t = timers.get(key);
+        if (t && t.remaining > 0) {
+          s.el.classList.add('running');
+          s.cdEl.textContent = fmt(t.remaining);
+        } else {
+          s.el.classList.remove('running');
+        }
+      }
+      function toggle(key) {
+        const s = slots.get(key);
+        if (!s || !s.cd) return;
+        if (timers.has(key)) { stopTimer(key); paint(key); return; }
+        let remaining = s.cd;
+        const interval = setInterval(() => {
+          remaining -= 1;
+          if (!timers.has(key)) return;
+          timers.get(key).remaining = remaining;
+          if (remaining <= 0) { stopTimer(key); paint(key); return; }
+          s.cdEl.textContent = fmt(remaining);
+        }, 1000);
+        timers.set(key, { remaining, interval });
+        paint(key);
+      }
+
+      function ensureSlot(key, icon, cd, slotLabel, isUlt, title) {
+        let s = slots.get(key);
+        if (s && s.icon === icon && s.cd === cd) return s;
+        if (s) { stopTimer(key); s.el.remove(); slots.delete(key); }
+        const el = document.createElement('div');
+        el.className = 'cell click' + (isUlt ? ' ult' : '');
+        el.title = title;
+        el.innerHTML = isUlt
+          ? `<span class="r">R</span><div class="cd"></div>`
+          : `<img src="${icon}" draggable="false"><div class="cd"></div><span class="key">${slotLabel}</span>`;
+        el.addEventListener('click', () => toggle(key));
+        s = { el, cdEl: el.querySelector('.cd'), icon, cd };
+        slots.set(key, s);
+        paint(key);
+        return s;
+      }
+
+      function render(payload) {
+        const players = ((payload && payload.players) || []).filter((p) => p.isEnemy);
+        if (!players.length) { tracker.classList.add('hidden'); return; }
+        tracker.classList.remove('hidden');
+        clockEl.textContent = fmtClock(payload.gameTime);
+        const seen = new Set();
+        rowsBox.innerHTML = '';
+        players.forEach((p) => {
+          seen.add(p.id);
+          const row = document.createElement('div');
+          row.className = 'erow';
+          const champ = document.createElement('div');
+          champ.className = 'cell';
+          champ.title = `${p.name} — ${p.champ}${p.level ? ' (Lv' + p.level + ')' : ''}`;
+          champ.innerHTML = `<img src="${p.icon}" draggable="false">`;
+          row.appendChild(champ);
+          (p.spells || []).forEach((sp) => {
+            const key = p.id + ':' + sp.slot;
+            const s = ensureSlot(key, sp.icon, sp.cd, sp.slot, false, `${p.name} ${sp.name} (${fmt(sp.cd)})`);
+            row.appendChild(s.el);
+          });
+          const uk = p.id + ':R';
+          const u = ensureSlot(uk, 'ult', p.ultCd || 120, 'R', true, `${p.name} ulti (~${fmt(p.ultCd || 120)})`);
+          row.appendChild(u.el);
+          rowsBox.appendChild(row);
+        });
+        // cleanup timers for enemies no longer present
+        [...slots.keys()].forEach((key) => {
+          const id = key.slice(0, key.lastIndexOf(':'));
+          if (!seen.has(id)) { stopTimer(key); const s = slots.get(key); if (s) s.el.remove(); slots.delete(key); }
+        });
+      }
+
+      settingsBtn.addEventListener('click', (e) => { e.stopPropagation(); settingsMenu.classList.toggle('open'); });
+      document.addEventListener('click', (e) => {
+        if (!settingsMenu.contains(e.target)) settingsMenu.classList.remove('open');
+      });
+
+      // Click-through: only capture mouse when hovering our UI, otherwise let clicks pass to the game
+      let clickOn = false;
+      function setHover(on) {
+        if (on === clickOn) return;
+        clickOn = on;
+        try { API.setClickThrough(!on); } catch {}
+      }
+      document.addEventListener('mousemove', (e) => {
+        const t = e.target;
+        setHover(!!(t && t.closest && t.closest('#tracker, #settings-btn, #settings-menu')));
+      });
+      document.addEventListener('mouseleave', () => setHover(false));
+
+      API.onPlayersUpdate(render);
+      console.log('[OTP Overlay] Ready');
+    })();
+  </script>
+</body>
+</html>

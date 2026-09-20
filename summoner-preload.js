@@ -218,26 +218,44 @@ function renderSummoner(res, showBack) {
   if (!res || !res.ok) { body.innerHTML = `<div class="otp-serr">Error: ${esc(res?.error || 'unknown')}</div>`; return; }
   lastDlRes = { ...res, matches: res.matches ? [...res.matches] : [], _view: [], _painted: 0 };
   markUpdated();
-  const rankHtml = (res.ranks || []).map((r) => {
-    const q = r.queueType === 'RANKED_SOLO_5x5' ? 'Solo' : r.queueType === 'RANKED_FLEX_SR' ? 'Flex' : r.queueType;
-    const tot = (r.wins ?? 0) + (r.losses ?? 0);
-    const wr = tot ? Math.round((r.wins / tot) * 100) : 0;
-    const wl = (r.wins == null) ? '' : `<span class="sub">${r.wins}W ${r.losses}L (${wr}%)</span>`;
-    return `<div class="otp-mrow"><span style="width:44px;color:#9aa3b8">${q}</span><b>${r.tier} ${r.rank}</b><span>${r.leaguePoints} LP</span>${wl}</div>`;
-  }).join('') || `<div class="otp-serr">No ranked data (unranked?)</div>`;
+
   const backHtml = (showBack && lastLobbyRes) ? `<div class="otp-serr" style="text-align:left;padding:0 0 8px;"><a href="javascript:void(0)" id="otp-backlob" style="color:#6cb2ff">← Back to lobby</a></div>` : '';
   body.innerHTML = `
     ${backHtml}
-    <div class="otp-sprof">
+    <div class="otp-sprof" style="display:flex;align-items:center;gap:16px;">
       <img src="${res.profile.iconUrl}">
-      <div><b style="font-size:15px">${esc(res.profile.name)} #${esc(res.profile.tag)}</b><div class="lv" style="margin-left:14px;">Level ${res.profile.level}</div></div>
-      <div class="otp-score" id="otp-scorebox">…</div>
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <b style="font-size:18px;color:#fff;">${esc(res.profile.name)} <span style="color:#94a3b8;font-size:15px;">#${esc(res.profile.tag)}</span></b>
+          <span class="lv">Lv ${res.profile.level}</span>
+        </div>
+      </div>
     </div>
-    <div class="otp-ssec">Ranked</div>${rankHtml}
-    <div class="otp-ssec" id="otp-champlabel">Champions</div><div id="otp-champsbox"></div>
-    <div class="otp-ssec">Recent Matches — click a row for both teams</div>
-    <div id="otp-matchlist">${(res.pendingIds?.length) ? '<div class="otp-serr" id="otp-mloading">Loading matches…</div>' : ''}</div>
-    <div class="otp-serr" style="font-size:11px">Scores are computed from loaded matches. Not an official/deeplol score.</div>`;
+
+    <!-- DeepLoL 3-part Stats Summary Box -->
+    <div id="otp-dl-summary"></div>
+
+    <!-- DeepLoL 2-Column Grid -->
+    <div class="otp-dl-grid">
+      <!-- Left Column: Ranked info + Champions sidebar -->
+      <div class="otp-dl-sidebar">
+        <div class="otp-side-card">
+          <div class="otp-side-card-head"><span>Ranked</span></div>
+          <div id="otp-rankedbox"></div>
+        </div>
+        <div class="otp-side-card">
+          <div class="otp-side-card-head"><span id="otp-champlabel">Champions</span></div>
+          <div id="otp-champsbox"></div>
+        </div>
+      </div>
+
+      <!-- Right Column: Matches with spells/runes, fate, and team expandable table -->
+      <div class="otp-dl-main">
+        <div id="otp-matchlist">${(res.pendingIds?.length) ? '<div class="otp-serr" id="otp-mloading">Loading matches…</div>' : ''}</div>
+        <div class="otp-serr" style="font-size:11px">Scores and Fate are computed from match participants. Click any row for team details.</div>
+      </div>
+    </div>`;
+
   const bb = body.querySelector('#otp-backlob');
   if (bb) bb.onclick = () => renderLobbyList(lastLobbyRes);
   document.querySelector('#otp-qtabs').classList.add('show');
@@ -253,21 +271,53 @@ function renderSummoner(res, showBack) {
 function dlStats() {
   const ms = lastDlRes?._view || [];
   let w = 0, k = 0, d = 0, a = 0, aiSum = 0, aiN = 0;
+  let diffSum = 0, diffN = 0;
+  const roles = { TOP: 0, JUNGLE: 0, MIDDLE: 0, BOTTOM: 0, UTILITY: 0 };
+
   ms.forEach((m) => {
     if (m.win) w++; k += m.kills; d += m.deaths; a += m.assists;
     if (typeof m.ai === 'number') { aiSum += m.ai; aiN++; }
+    if (typeof m.teamDiff === 'number') { diffSum += m.teamDiff; diffN++; }
+    if (m.position && roles[m.position] !== undefined) roles[m.position]++;
   });
+
   const n = ms.length || 1;
   const wr = Math.round((w / n) * 100);
   const kda = ((k + a) / Math.max(1, d)).toFixed(2);
+  const avgK = (k / n).toFixed(1);
+  const avgD = (d / n).toFixed(1);
+  const avgA = (a / n).toFixed(1);
+  const aiAvg = aiN ? Math.round(aiSum / aiN) : null;
+  const avgDiff = diffN ? (diffSum / diffN) : 0;
+
+  // Exact DeepLoL Fate calculation based on teammate difference vs opponent
+  let fate = { type: 'balanced', label: 'Balanced', pct: 50 };
+  if (diffN > 0) {
+    if (avgDiff >= 2.0) {
+      fate = { type: 'godlike', label: 'Godlike', pct: Math.min(10, Math.max(1, Math.round(20 - avgDiff * 2))) };
+    } else if (avgDiff >= 0.5) {
+      fate = { type: 'solid', label: 'Solid', pct: Math.min(30, Math.max(11, Math.round(40 - avgDiff * 5))) };
+    } else if (avgDiff <= -3.0) {
+      fate = { type: 'messy', label: 'Messy', pct: Math.min(99, Math.max(70, Math.round(65 - avgDiff * 3))) };
+    } else if (avgDiff <= -1.0) {
+      fate = { type: 'messy', label: 'Unlucky', pct: Math.min(75, Math.max(55, Math.round(50 - avgDiff * 4))) };
+    } else {
+      fate = { type: 'balanced', label: 'Balanced', pct: 50 };
+    }
+  }
+
   const champs = {};
   ms.forEach((m) => {
     const c = (champs[m.champ] = champs[m.champ] || { champ: m.champ, icon: m.icon, g: 0, w: 0, k: 0, d: 0, a: 0 });
     c.g++; if (m.win) c.w++; c.k += m.kills; c.d += m.deaths; c.a += m.assists;
   });
-  return { n, w, wr, kda, aiAvg: aiN ? Math.round(aiSum / aiN) : null,
+
+  return {
+    n: ms.length, w, l: ms.length - w, wr, kda, avgK, avgD, avgA, aiAvg, fate,
+    roles,
     value: Math.min(9999, Math.round(wr * 50 + ((k + a) / Math.max(1, d)) * 120)),
-    champs: Object.values(champs).sort((x, y) => y.g - x.g) };
+    champs: Object.values(champs).sort((x, y) => y.g - x.g)
+  };
 }
 
 function aiColor(v) {
@@ -300,8 +350,57 @@ function timeAgo(ts) {
 }
 
 function matchRowHtml(m, mi) {
-  const kda = ((m.kills + m.assists) / Math.max(1, m.deaths)).toFixed(2);
-  return `<div class="otp-mrow ${m.win ? 'win' : 'lose'} otp-mexp" data-mi="${mi}" style="cursor:pointer" title="Click for both teams"><img loading="lazy" src="${m.icon}"><span style="width:104px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(m.champ)}</span>${aiBadge(m.ai)}<span class="kda">${m.kills}/${m.deaths}/${m.assists} (${kda})</span><span class="sub">${qname(m.queue)} · ${m.win ? 'W' : 'L'} · ${m.cs} CS${m.ts ? ` · ${timeAgo(m.ts)}` : ''}</span></div><div id="otp-mexp-${mi}" style="display:none;margin:8px 0 14px 0;"></div>`;
+  const kRatio = ((m.kills + m.assists) / Math.max(1, m.deaths));
+  const kda = kRatio.toFixed(2);
+
+  let matchFate = { type: 'balanced', label: 'Balanced' };
+  if (typeof m.teamDiff === 'number') {
+    if (m.teamDiff >= 8) matchFate = { type: 'godlike', label: 'Godlike' };
+    else if (m.teamDiff >= 1.5) matchFate = { type: 'solid', label: 'Solid' };
+    else if (m.teamDiff <= -8) matchFate = { type: 'messy', label: 'Messy' };
+    else matchFate = { type: 'balanced', label: 'Balanced' };
+  }
+
+  const cloudSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
+
+  const spellsHtml = (m.spells || []).map((s) => `<img src="${s}">`).join('');
+  const runesHtml = (m.runes || []).map((r) => `<img src="${r}">`).join('');
+
+  return `
+    <div class="otp-mrow ${m.win ? 'win' : 'lose'} otp-mexp" data-mi="${mi}" style="cursor:pointer" title="Click for team details">
+      <div class="otp-m-meta">
+        <span class="otp-m-queue">${esc(qname(m.queue))}</span>
+        <span class="otp-m-time">${m.ts ? timeAgo(m.ts) : ''}</span>
+        <span class="otp-m-result ${m.win ? 'win' : 'lose'}">${m.win ? 'Win' : 'Lose'}${m.dur ? ` ${Math.floor(m.dur/60)}:${String(m.dur%60).padStart(2,'0')}` : ''}</span>
+      </div>
+
+      <div class="otp-m-champbox">
+        <img class="champ-icon" loading="lazy" src="${m.icon}" title="${esc(m.champ)}">
+        <div class="otp-m-spells-runes">
+          ${spellsHtml}
+          ${runesHtml}
+        </div>
+      </div>
+
+      <div class="otp-m-kda">
+        <div class="otp-m-kda-nums">${m.kills} / <span style="color:#ef4444">${m.deaths}</span> / ${m.assists}</div>
+        <div class="otp-m-kda-ratio">${kda} KDA</div>
+      </div>
+
+      <div class="otp-m-ai">
+        ${aiBadge(m.ai)}
+        ${m.mvp ? `<span class="otp-m-tag tag-mvp">👑 MVP</span>` : m.ace ? `<span class="otp-m-tag tag-ace">ACE</span>` : ''}
+      </div>
+
+      <div class="otp-m-tagbox">
+        <span class="otp-m-tag tag-${matchFate.type}">${cloudSvg} Fate: ${matchFate.label}</span>
+      </div>
+
+      <div style="font-size:11px;color:#8f96a3;text-align:right;">
+        <span>${m.cs || 0} CS</span>
+      </div>
+    </div>
+    <div id="otp-mexp-${mi}" style="display:none;margin:6px 0 14px 0;"></div>`;
 }
 
 function paintMatchData() {
@@ -310,16 +409,134 @@ function paintMatchData() {
   lastDlRes._view = curQueue === 'all' ? all : all.filter((m) => m.queue === curQueue);
   const st = dlStats();
   lastDlRes.score = { value: st.value, wr: st.wr, kda: st.kda, games: st.n, aiAvg: st.aiAvg };
-  const sb = document.querySelector('#otp-scorebox');
-  if (sb) sb.innerHTML = `<b>${st.aiAvg ?? st.value}</b><div>${st.aiAvg != null ? 'deeplol AI score (avg)' : 'OTP Score'} · last ${st.n} games</div><div>%${st.wr} WR · ${st.kda} KDA</div>`;
+
+  // 1. DeepLoL 3-Part Summary Block
+  const sumEl = document.querySelector('#otp-dl-summary');
+  if (sumEl) {
+    if (st.n > 0) {
+      const circleBorder = st.wr >= 50 ? '#10b981' : '#ef4444';
+      const cloudSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
+
+      const champsMiniHtml = st.champs.slice(0, 3).map((c) => {
+        const cwr = c.g ? Math.round((c.w / c.g) * 100) : 0;
+        const ckda = ((c.k + c.a) / Math.max(1, c.d)).toFixed(2);
+        const wrCol = cwr >= 60 ? '#10b981' : cwr <= 40 ? '#ef4444' : '#e2e8f0';
+        return `
+          <div class="otp-sum-champ-row">
+            <img src="${c.icon}">
+            <div class="otp-sum-champ-meta">
+              <div><span style="font-weight:700;color:${wrCol}">${cwr}%</span> <span style="color:#8f96a3;">(${c.w}W ${c.g - c.w}L)</span></div>
+              <div class="otp-sum-champ-kda">${ckda} KDA</div>
+            </div>
+          </div>`;
+      }).join('');
+
+      // Top roles distribution
+      const rMax = Math.max(1, st.roles.TOP, st.roles.JUNGLE, st.roles.MIDDLE, st.roles.BOTTOM, st.roles.UTILITY);
+      const roleBar = (cnt, lbl) => {
+        const h = Math.max(4, Math.round((cnt / rMax) * 36));
+        const col = cnt > 0 ? (cnt === rMax ? '#3b82f6' : '#1e3a8a') : '#1c202d';
+        return `<div class="otp-role-bar-wrap"><div class="otp-role-bar" style="height:${h}px;background:${col};"></div><span class="otp-role-icon">${lbl}</span></div>`;
+      };
+
+      sumEl.innerHTML = `
+        <div class="otp-dl-summary-box">
+          <div class="otp-sum-col-main">
+            <div class="otp-sum-circle" style="border-color:${circleBorder};">
+              <span>${st.wr}%</span>
+            </div>
+            <div class="otp-sum-details">
+              <div class="otp-sum-row-top">
+                <span class="otp-sum-games">${st.n} Games</span>
+                <span class="otp-sum-kda">${st.kda} KDA</span>
+                <span class="otp-sum-score">${st.aiAvg ?? st.value} <span style="font-size:10px;color:#8f96a3;font-weight:normal;">AI-Score</span></span>
+              </div>
+              <div class="otp-sum-row-sub">
+                <span>${st.w}W ${st.l}L</span>
+                <span>${st.avgK} / <span style="color:#ef4444">${st.avgD}</span> / ${st.avgA}</span>
+              </div>
+              <div class="otp-sum-row-badges">
+                <div class="otp-sum-badge-card">
+                  <span style="color:#8f96a3;">AI Tier:</span>
+                  <span style="color:#ffd166;font-weight:600;">Prediction</span>
+                </div>
+                <div class="otp-sum-badge-card">
+                  <span style="display:inline-flex;align-items:center;gap:4px;color:#60a5fa;font-weight:600;">
+                    ${cloudSvg} Fate: ${st.fate.label} <span style="color:#94a3b8;font-size:10px;">(Top ${st.fate.pct}%)</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="otp-sum-col-champs">
+            <span class="otp-roles-title">Champion Played</span>
+            ${champsMiniHtml}
+          </div>
+
+          <div class="otp-sum-col-roles">
+            <span class="otp-roles-title">Top Roles</span>
+            <div class="otp-roles-bars">
+              ${roleBar(st.roles.TOP, 'TOP')}
+              ${roleBar(st.roles.JUNGLE, 'JGL')}
+              ${roleBar(st.roles.MIDDLE, 'MID')}
+              ${roleBar(st.roles.BOTTOM, 'BOT')}
+              ${roleBar(st.roles.UTILITY, 'SUP')}
+            </div>
+          </div>
+        </div>`;
+    } else {
+      sumEl.innerHTML = '';
+    }
+  }
+
+  // 2. Left Column: Ranked box
+  const rb = document.querySelector('#otp-rankedbox');
+  if (rb) {
+    rb.innerHTML = (lastDlRes.ranks || []).map((r) => {
+      const q = r.queueType === 'RANKED_SOLO_5x5' ? 'Solo' : r.queueType === 'RANKED_FLEX_SR' ? 'Flex' : r.queueType;
+      const tot = (r.wins ?? 0) + (r.losses ?? 0);
+      const wr = tot ? Math.round((r.wins / tot) * 100) : 0;
+      const wl = (r.wins == null) ? '' : `<div style="font-size:11px;color:#8f96a3;">${r.wins}W ${r.losses}L (${wr}%)</div>`;
+      return `
+        <div style="padding:6px 0;border-bottom:1px solid #1f232e;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:11px;color:#8f96a3;">${q}</span>
+            <span style="font-size:12px;font-weight:700;color:#f3f4f6;">${r.tier} ${r.rank}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
+            <span style="font-size:11px;color:#60a5fa;">${r.leaguePoints} LP</span>
+            ${wl}
+          </div>
+        </div>`;
+    }).join('') || `<div class="otp-serr" style="padding:10px;">Unranked</div>`;
+  }
+
+  // 3. Left Column: Champions Sidebar list
   const cl = document.querySelector('#otp-champlabel');
-  if (cl) cl.textContent = `Champions (last ${st.n} games)`;
+  if (cl) cl.textContent = `Champions (${st.n})`;
   const cb = document.querySelector('#otp-champsbox');
-  if (cb) cb.innerHTML = st.champs.slice(0, 6).map((c) => {
-    const cwr = c.g ? Math.round((c.w / c.g) * 100) : 0;
-    const ckda = ((c.k + c.a) / Math.max(1, c.d)).toFixed(2);
-    return `<div class="otp-mrow"><img loading="lazy" src="${c.icon}"><span>${esc(c.champ)}</span><span class="sub">${c.g} games · ${cwr}% · ${ckda} KDA</span></div>`;
-  }).join('');
+  if (cb) {
+    cb.innerHTML = st.champs.slice(0, 6).map((c) => {
+      const cwr = c.g ? Math.round((c.w / c.g) * 100) : 0;
+      const ckda = ((c.k + c.a) / Math.max(1, c.d)).toFixed(2);
+      const wrColor = cwr >= 60 ? '#10b981' : cwr <= 40 ? '#ef4444' : '#e2e8f0';
+      return `
+        <div class="otp-side-champ">
+          <img src="${c.icon}">
+          <div>
+            <div class="otp-side-champ-name">${esc(c.champ)}</div>
+            <div class="otp-side-champ-kda">${ckda} KDA</div>
+          </div>
+          <div class="otp-side-champ-right">
+            <div class="otp-side-champ-wr" style="color:${wrColor}">${cwr}%</div>
+            <div class="otp-side-champ-count">${c.g} games</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // 4. Right Column: Match List
   const ml = document.querySelector('#otp-matchlist');
   if (ml) {
     ml.innerHTML = lastDlRes._view.map((m, k) => matchRowHtml(m, k)).join('') || `<div class="otp-serr">No matches for this filter</div>`;
@@ -339,7 +556,7 @@ function paintMatchData() {
       row.onclick = () => toggleMatchExpand(Number(row.dataset.mi));
     });
   }
-  renderQtabs(); // rebuild tabs (new queues may appear) + counts
+  renderQtabs();
 }
 
 async function loadMatchChunks(res) {

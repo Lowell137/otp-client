@@ -1,7 +1,15 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, screen } = require('electron');
 const path = require('path');
 
+// Disable transparent window hardware acceleration issues on Windows that can freeze DWM / DirectX
+app.commandLine.appendSwitch('disable-gpu-process-crash-limit');
+
 let win = null;
+let overlayWin = null;
+
+// OVERLAY GEÇİCİ KAPALI — kod silinmedi, sadece bu bayrakla devre dışı.
+// Yeniden açmak için false yap (ayarlardaki In-Game Overlay anahtarı o zaman çalışır).
+const OVERLAY_DISABLED = true;
 
 function initAdblock(sess) {
   // Block common tracking and advertising hosts at the network request level
@@ -17,15 +25,24 @@ function initAdblock(sess) {
 }
 
 let ddragonCache = null;
+let spellCache = null;
+let runeCache = null;
+let ddVersionCache = null;
+async function getDdVersion() {
+  if (ddVersionCache) return ddVersionCache;
+  let version = '16.1.1';
+  try {
+    const vRes = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
+    const vJson = await vRes.json();
+    if (vJson?.[0]) version = vJson[0];
+  } catch {}
+  ddVersionCache = version;
+  return version;
+}
 async function champIdToName(id) {
   try {
+    const version = await getDdVersion();
     if (!ddragonCache) {
-      let version = '16.1.1';
-      try {
-        const vRes = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
-        const vJson = await vRes.json();
-        if (vJson?.[0]) version = vJson[0];
-      } catch {}
       const r = await fetch(`https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/champion.json`);
       ddragonCache = (await r.json()).data;
     }
@@ -35,13 +52,49 @@ async function champIdToName(id) {
   } catch {}
   return null;
 }
+async function getSpellIcon(key) {
+  try {
+    const version = await getDdVersion();
+    if (!spellCache) {
+      const r = await fetch(`https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/summoner.json`);
+      const j = await r.json();
+      spellCache = {};
+      for (const k in j.data) {
+        spellCache[String(j.data[k].key)] = `https://ddragon.leagueoflegends.com/cdn/${version}/img/spell/${j.data[k].image.full}`;
+      }
+    }
+    return spellCache[String(key)] || null;
+  } catch {}
+  return null;
+}
+async function getRuneIcon(id) {
+  try {
+    const version = await getDdVersion();
+    if (!runeCache) {
+      const r = await fetch(`https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/runesReforged.json`);
+      const list = await r.json();
+      runeCache = {};
+      list.forEach((tree) => {
+        runeCache[String(tree.id)] = `https://ddragon.leagueoflegends.com/cdn/img/${tree.icon}`;
+        (tree.slots || []).forEach((slot) => {
+          (slot.runes || []).forEach((rune) => {
+            runeCache[String(rune.id)] = `https://ddragon.leagueoflegends.com/cdn/img/${rune.icon}`;
+          });
+        });
+      });
+    }
+    return runeCache[String(id)] || null;
+  } catch {}
+  return null;
+}
 
 let lastSentChamp = null;
 let lastAutoBuildId = null;
-const flags = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, flashSlot: 'D' };
+let champDebounceTimer = null;
+const flags = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, overlay: false, flashSlot: 'D' };
 
 function startLcuLoops() {
-  // Ultra-fast champ tracking (500ms, cached creds)
+  // Champ tracking loop (1.2s smooth poll)
   const lcu = require('./lcu.js');
   setInterval(async () => {
     try {
@@ -49,28 +102,101 @@ function startLcuLoops() {
       const { request } = require('league-connect');
       const creds = await lcu.getCreds();
       const res = await request({ method: 'GET', url: '/lol-champ-select/v1/session' }, creds);
-      if (res.status !== 200) { lastSentChamp = null; lastAutoBuildId = null; return; }
+      if (res.status !== 200) {
+        lastSentChamp = null;
+        lastAutoBuildId = null;
+        if (champDebounceTimer) { clearTimeout(champDebounceTimer); champDebounceTimer = null; }
+        return;
+      }
       const s = await res.json();
       const me = (s.myTeam || []).find((p) => p.cellId === s.localPlayerCellId);
       const champId = me?.championId || me?.championPickIntent || 0;
       if (!champId) return;
+
       if (champId !== lastSentChamp) {
         lastSentChamp = champId;
         const name = await champIdToName(champId);
-        if (name) {
-          win.webContents.send('otp:auto-champ', name);
-          if (flags.follow) {
-            const curUrl = win.webContents.getURL() || '';
-            const targetSlug = encodeURIComponent(name).toLowerCase();
-            if (!curUrl.toLowerCase().includes(`/champions/builds/${targetSlug}`)) {
-              win.webContents.session.setPreloads([path.join(__dirname, 'preload.js')]);
-              win.loadURL(`https://www.onetricks.gg/champions/builds/${encodeURIComponent(name)}`);
+        if (!name) return;
+
+        // Debounce by 700ms: if player quickly scrolls through champions, don't spam LCU/requests
+        if (champDebounceTimer) clearTimeout(champDebounceTimer);
+        champDebounceTimer = setTimeout(async () => {
+          try {
+            console.log(`[otp] Champ selected/hovered: ${name} (id: ${champId})`);
+
+            // 1. Follow in browser window first or sync URL
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('otp:auto-champ', name);
+              if (flags.follow) {
+                const curUrl = win.webContents.getURL() || '';
+                const targetSlug = encodeURIComponent(name).toLowerCase();
+                if (!curUrl.toLowerCase().includes(`/champions/builds/${targetSlug}`)) {
+                  win.webContents.session.setPreloads([path.join(__dirname, 'preload.js')]);
+                  await win.loadURL(`https://www.onetricks.gg/champions/builds/${encodeURIComponent(name)}`).catch(() => {});
+                }
+              }
             }
+
+            // 2. Instant Auto-Import (Blitz/Mobalytics style)
+            if (flags.autoBuild && lastAutoBuildId !== champId) {
+              lastAutoBuildId = champId;
+              let build = null;
+
+              // Try extracting build from open browser window first (bypasses Cloudflare / 429 rate limits)
+              if (win && !win.isDestroyed()) {
+                try {
+                  build = await win.webContents.executeJavaScript(`
+                    (async () => {
+                      try {
+                        if (window.otp?.parseBuild) {
+                          const b = await window.otp.parseBuild();
+                          if (b && !b.error) return b;
+                        }
+                      } catch {}
+                      return null;
+                    })()
+                  `);
+                } catch {}
+              }
+
+              // Fallback to lcu.fetchOtpBuild if not on page or extraction failed
+              if (!build || build.error) {
+                try {
+                  build = await lcu.fetchOtpBuild(name);
+                } catch (fetchErr) {
+                  console.warn(`[otp] Background fetch fallback warning:`, fetchErr?.message || fetchErr);
+                }
+              }
+
+              if (build && build.runes?.selectedPerkIds) {
+                build.flashSlot = flags.flashSlot || 'D';
+                const creds = await lcu.getCreds();
+                const [runeRes, itemRes, spellRes] = await Promise.allSettled([
+                  lcu.importRunes(creds, build),
+                  lcu.importItems(creds, build),
+                  (flags.autoSpell !== false) ? lcu.importSpells(creds, build) : Promise.resolve(null)
+                ]);
+                const rOk = runeRes.status === 'fulfilled';
+                const sOk = spellRes.status === 'fulfilled' && !!spellRes.value;
+                console.log(`[otp] Instant hover import finished for ${name}: runes=${rOk} spells=${sOk}`);
+                if (win && !win.isDestroyed()) {
+                  win.webContents.send('otp:auto-imported', {
+                    name,
+                    spells: sOk,
+                    rate: build.rate
+                  });
+                }
+              } else {
+                console.warn(`[otp] Could not retrieve build for ${name}`);
+              }
+            }
+          } catch (e) {
+            console.warn('[otp] debounce auto-import error:', e);
           }
-        }
+        }, 700);
       }
     } catch {}
-  }, 500);
+  }, 1200);
 
   // auto accept matches (1s)
   setInterval(async () => {
@@ -94,6 +220,7 @@ async function createWindow() {
   win = new BrowserWindow({
     width: 1360,
     height: 860,
+    show: true,
     autoHideMenuBar: true,
     backgroundColor: '#0b0e14',
     icon: path.join(__dirname, 'assets/icon.ico'),
@@ -104,11 +231,21 @@ async function createWindow() {
     }
   });
 
+  win.once('ready-to-show', () => {
+    win.show();
+  });
+
   // Hide the Electron tag: some WAFs challenge non-standard UAs (error pages in-app while fetch works)
   win.webContents.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36');
 
   await initAdblock(win.webContents.session);
-  win.loadURL('https://www.onetricks.gg');
+  win.loadURL('https://www.onetricks.gg').catch(e => {
+    console.error('[otp] Failed to load onetricks.gg:', e);
+  });
+
+  win.webContents.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL) => {
+    console.warn(`[otp] did-fail-load: ${errorCode} (${errorDescription}) for ${validatedURL}`);
+  });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://www.onetricks.gg')) return { action: 'allow' };
@@ -117,18 +254,236 @@ async function createWindow() {
   });
 }
 
+// ---- OVERLAY WINDOW (auto-shown while a live game is detected) ----
+function createOverlayWindow() {
+  if (overlayWin && !overlayWin.isDestroyed()) return overlayWin;
+  const primary = screen.getPrimaryDisplay();
+  const { width, height } = primary.bounds;
+
+  overlayWin = new BrowserWindow({
+    x: 0, y: 0,
+    width, height,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: false,
+    resizable: false,
+    movable: true,
+    fullscreenable: false,
+    hasShadow: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'overlay-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  overlayWin.setIgnoreMouseEvents(true, { forward: true });
+  overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  overlayWin.webContents.on('console-message', (_e, _lvl, msg) => console.log('[otp] ov-console:', msg));
+  overlayWin.loadFile(path.join(__dirname, 'overlay.html'));
+  overlayWin.on('closed', () => { overlayWin = null; });
+  return overlayWin;
+}
+
+function showOverlay() {
+  const ow = createOverlayWindow();
+  if (ow.isMinimized()) ow.restore();
+  ow.setAlwaysOnTop(true, 'screen-saver');
+  if (!ow.isVisible()) ow.show();
+  ow.setIgnoreMouseEvents(true, { forward: true });
+}
+
+function hideOverlay() {
+  if (overlayWin && !overlayWin.isDestroyed() && overlayWin.isVisible()) {
+    overlayWin.hide();
+  }
+}
+
+// ---- LIVE CLIENT DATA (direct HTTPS, no LCU auth needed) ----
+const httpsLive = require('https');
+let ddragonBaseCache = null;
+async function ddragonBase() {
+  if (ddragonBaseCache) return ddragonBaseCache;
+  let v = '16.1.1';
+  try {
+    const j = await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json')).json();
+    if (j?.[0]) v = j[0];
+  } catch {}
+  ddragonBaseCache = `https://ddragon.leagueoflegends.com/cdn/${v}`;
+  return ddragonBaseCache;
+}
+function liveGet(pathname, timeoutMs = 2500) {
+  return new Promise((resolve, reject) => {
+    const req = httpsLive.request({
+      hostname: '127.0.0.1', port: 2999, path: pathname,
+      method: 'GET', rejectUnauthorized: false, timeout: timeoutMs
+    }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); reject(new Error('live HTTP ' + res.statusCode)); return; }
+      let d = '';
+      res.on('data', (c) => (d += c));
+      res.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { reject(e); } });
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+// Fallback spell data (displayName -> [icon, baseCd]) if ddragon summoner.json is unreachable
+const SPELL_FALLBACK = {
+  Flash: ['SummonerFlash', 300], Teleport: ['SummonerTeleport', 360],
+  Ignite: ['SummonerDot', 180], Exhaust: ['SummonerExhaust', 210],
+  Heal: ['SummonerHeal', 270], Barrier: ['SummonerBarrier', 180],
+  Ghost: ['SummonerHaste', 210], Cleanse: ['SummonerBoost', 210],
+  Smite: ['SummonerSmite', 15], Mark: ['SummonerSnowball', 80],
+  'Clarity': ['SummonerMana', 240]
+};
+let sumSpellMap = null;
+async function summonerSpellInfo(displayName, ddragon) {
+  try {
+    if (!sumSpellMap) {
+      const j = await (await fetch(`${ddragon}/data/en_US/summoner.json`)).json();
+      sumSpellMap = {};
+      for (const v of Object.values(j.data || {})) {
+        sumSpellMap[v.name] = { icon: String(v.image?.full || '').replace(/\.png$/i, ''), cd: parseInt(v.cooldownBurn, 10) || 180 };
+      }
+    }
+    if (displayName && sumSpellMap[displayName]) return sumSpellMap[displayName];
+  } catch {}
+  const fb = SPELL_FALLBACK[displayName];
+  return fb ? { icon: fb[0], cd: fb[1] } : { icon: 'SummonerFlash', cd: 180 };
+}
+
+// Base ultimate cooldowns per champion (rank 1); user clicks the slot when the ult is used
+const ULT_CD = {
+  Aatrox: 120, Ahri: 130, Akali: 100, Akshan: 100, Alistar: 120, Ambessa: 120, Amumu: 130,
+  Anivia: 120, Annie: 120, Aphelios: 120, Ashe: 100, AurelionSol: 120, Aurora: 140, Azir: 120,
+  Bard: 110, Belveth: 180, Blitzcrank: 90, Brand: 120, Braum: 140, Briar: 120, Caitlyn: 90,
+  Camille: 120, Cassiopeia: 120, Chogath: 80, Corki: 12, Darius: 120, Diana: 100, DrMundo: 110,
+  Draven: 110, Ekko: 90, Elise: 120, Evelynn: 120, Ezreal: 120, Fiddlesticks: 140, Fiora: 110,
+  Fizz: 100, Galio: 180, Gangplank: 180, Garen: 120, Gnar: 120, Gragas: 100, Graves: 100,
+  Gwen: 120, Hecarim: 100, Heimerdinger: 130, Hwei: 0, Illaoi: 120, Irelia: 120, Ivern: 140,
+  Janna: 150, JarvanIV: 120, Jax: 80, Jayce: 0, Jhin: 120, Jinx: 90, KSante: 120, Kaisa: 110,
+  Kalista: 120, Karma: 70, Karthus: 200, Kassadin: 10, Katarina: 120, Kayle: 160, Kayn: 120,
+  Kennen: 120, Khazix: 100, Kindred: 120, Kled: 160, KogMaw: 40, Leblanc: 120, LeeSin: 90,
+  Leona: 90, Lillia: 130, Lissandra: 130, Lucian: 110, Lulu: 110, Lux: 80, Malphite: 130,
+  Malzahar: 140, Maokai: 120, MasterYi: 85, Mel: 120, Milio: 140, MissFortune: 120,
+  MonkeyKing: 130, Mordekaiser: 100, Morgana: 110, Naafiri: 90, Nami: 130, Nasus: 120,
+  Nautilus: 120, Neeko: 90, Nidalee: 100, Nilah: 100, Nocturne: 140, Nunu: 110, Olaf: 120,
+  Orianna: 110, Ornn: 140, Pantheon: 180, Poppy: 140, Pyke: 120, Qiyana: 120, Quinn: 100,
+  Rakan: 130, Rammus: 100, RekSai: 150, Rell: 130, Renata: 120, Renekton: 120, Rengar: 110,
+  Riven: 120, Rumble: 110, Ryze: 180, Samira: 110, Sejuani: 130, Senna: 160, Seraphine: 160,
+  Sett: 120, Shaco: 100, Shen: 200, Shyvana: 0, Singed: 120, Sion: 140, Sivir: 100,
+  Skarner: 100, Smolder: 120, Sona: 130, Soraka: 150, Swain: 100, Sylas: 100, Syndra: 100,
+  TahmKench: 120, Taliyah: 180, Talon: 100, Taric: 160, Teemo: 30, Thresh: 140, Tristana: 120,
+  Trundle: 100, Tryndamere: 110, TwistedFate: 180, Twitch: 90, Udyr: 0, Urgot: 100, Varus: 100,
+  Vayne: 100, Veigar: 120, Velkoz: 90, Vex: 120, Vi: 130, Viego: 120, Viktor: 120,
+  Vladimir: 130, Volibear: 120, Warwick: 110, Xayah: 120, Xerath: 80, XinZhao: 120,
+  Yasuo: 120, Yone: 120, Yorick: 160, Yunara: 120, Yuumi: 110, Zac: 130, Zed: 120,
+  Zeri: 100, Zer: 0, Ziggs: 120, Zilean: 120, Zoe: 60, Zyra: 130
+};
+
+async function buildOverlayPayload(data) {
+  const ddragon = await ddragonBase();
+  const me = (data.allPlayers || []).find((p) => p.summonerName === data.activePlayer?.summonerName);
+  const myTeam = me?.team || 'ORDER';
+  const players = [];
+  for (const p of data.allPlayers || []) {
+    if (!p.championName || !p.summonerName) continue;
+    const s1 = p.summonerSpells?.summonerSpellOne?.displayName || 'Flash';
+    const s2 = p.summonerSpells?.summonerSpellTwo?.displayName || 'Teleport';
+    const [i1, i2] = await Promise.all([summonerSpellInfo(s1, ddragon), summonerSpellInfo(s2, ddragon)]);
+    players.push({
+      id: p.summonerName,
+      name: p.summonerName,
+      champ: p.championName,
+      level: p.level || null,
+      team: p.team,
+      isEnemy: p.team !== myTeam,
+      isSelf: p.summonerName === data.activePlayer?.summonerName,
+      icon: `${ddragon}/img/champion/${p.championName}.png`,
+      spells: [
+        { slot: 'D', name: s1, icon: `${ddragon}/img/spell/${i1.icon}.png`, cd: i1.cd },
+        { slot: 'F', name: s2, icon: `${ddragon}/img/spell/${i2.icon}.png`, cd: i2.cd }
+      ],
+      ultCd: ULT_CD[p.championName] ?? 120
+    });
+  }
+  return { players, gameTime: data.gameData?.gameTime ?? null };
+}
+
+// Poll the Live Client: auto-show overlay in game, auto-hide when the game ends
+let liveInGame = false;
+let liveDbgCount = 0;
+async function liveTick() {
+  liveDbgCount++;
+  try {
+    const data = await liveGet('/liveclientdata/allgamedata');
+    if (!data?.allPlayers?.length) throw new Error('no game');
+    liveInGame = true;
+    if (liveDbgCount % 10 === 1) {
+      try {
+        const dbgP = await buildOverlayPayload(data);
+        console.log(`[otp] liveDBG inGame ov=${!!flags.overlay} win=${overlayWin ? (overlayWin.isDestroyed() ? 'dead' : (overlayWin.isVisible() ? 'visible' : 'hidden')) : 'none'} n=${data.allPlayers.length} enemies=${dbgP.players.filter((p) => p.isEnemy).length} me=${data.activePlayer?.summonerName || '?'}`);
+      } catch (e) { console.log('[otp] liveDBG payload err: ' + (e?.message || e)); }
+    }
+    if (OVERLAY_DISABLED || !flags.overlay) { hideOverlay(); return; }
+    showOverlay();
+    if (overlayWin && !overlayWin.isDestroyed()) {
+      const payload = await buildOverlayPayload(data);
+      overlayWin.webContents.send('otp:overlay-players', payload);
+    }
+  } catch {
+    if (liveInGame) { liveInGame = false; hideOverlay(); }
+  }
+}
+
+function startLiveClientLoop() {
+  liveTick();
+  setInterval(liveTick, 3000);
+}
+
+function registerOverlayIpc() {
+  ipcMain.on('otp:overlay-close', () => { hideOverlay(); });
+  ipcMain.on('otp:overlay-clickthrough', (_e, enabled) => {
+    if (overlayWin && !overlayWin.isDestroyed()) {
+      overlayWin.setIgnoreMouseEvents(enabled, { forward: true });
+    }
+  });
+}
+
 
 app.whenReady().then(async () => {
   await createWindow();
   const lcu = require('./lcu.js');
   lcu.registerIpc(ipcMain);
+  registerOverlayIpc();
   startLcuLoops();
+  startLiveClientLoop();
   // Pre-warm champion and ddragon caches in background for instant lookup
   champIdToName(1).catch(() => {});
   lcu.getChampId('Annie').catch(() => {});
+
+  ipcMain.on('otp:win-min', () => { if (win && !win.isDestroyed()) win.minimize(); });
+  ipcMain.on('otp:win-max', () => {
+    if (win && !win.isDestroyed()) {
+      if (win.isMaximized()) win.unmaximize();
+      else win.maximize();
+    }
+  });
+  ipcMain.on('otp:win-close', () => { if (win && !win.isDestroyed()) win.close(); });
+  ipcMain.handle('otp:win-is-max', () => (win && !win.isDestroyed()) ? win.isMaximized() : false);
+  ipcMain.on('otp:nav-back', () => { if (win && !win.isDestroyed() && win.webContents.canGoBack()) win.webContents.goBack(); });
+  ipcMain.on('otp:nav-forward', () => { if (win && !win.isDestroyed() && win.webContents.canGoForward()) win.webContents.goForward(); });
+  ipcMain.on('otp:nav-reload', () => { if (win && !win.isDestroyed()) win.webContents.reload(); });
+
   ipcMain.on('otp:settings', (_e, s) => {
     Object.assign(flags, s || {});
     lcu.setFlags(flags);
+    if (OVERLAY_DISABLED) flags.overlay = false; // geçici kapalı
+    if (!flags.overlay) hideOverlay();
   });
   ipcMain.on('otp:open-tier', () => {
     if (!win || win.isDestroyed()) return;
@@ -415,28 +770,57 @@ app.whenReady().then(async () => {
         const fs = p.final_stat_dict || {};
         const cname = (p.champion_id && await champIdToName(p.champion_id)) || ('#' + p.champion_id);
         const blueWin = det?.match_basic_dict?.blue_win;
+
+        // Player spells & runes
+        const mySpells = [
+          await getSpellIcon(p.spell_id_dict?.spell_1),
+          await getSpellIcon(p.spell_id_dict?.spell_2),
+        ].filter(Boolean);
+        const myRunes = [
+          await getRuneIcon(p.rune_detail_dict?.perk_0),
+          await getRuneIcon(p.rune_detail_dict?.perk_sub_style),
+        ].filter(Boolean);
+
+        // Compute match fate diff (my team avg AI vs opp team avg AI)
+        const myTeamList = plist.filter((x) => x.side === p.side && x.puu_id !== puu);
+        const oppTeamList = plist.filter((x) => x.side !== p.side);
+        const myTeamAvg = myTeamList.reduce((s, x) => s + (x.final_stat_dict?.ai_score || 0), 0) / (myTeamList.length || 1);
+        const oppTeamAvg = oppTeamList.reduce((s, x) => s + (x.final_stat_dict?.ai_score || 0), 0) / (oppTeamList.length || 1);
+        const teamDiff = myTeamAvg - oppTeamAvg;
+
         const teams = [];
-          for (const x of plist) {
-            const xfs = x.final_stat_dict || {};
-            const xc = (x.champion_id && await champIdToName(x.champion_id)) || ('#' + x.champion_id);
-            const fi = x.final_item_dict || {};
-            const xitems = [0, 1, 2, 3, 4, 5].map((k) => {
-              const id = fi['item_' + k] ?? 0;
-              return id ? { id, icon: `${base}/img/item/${id}.png` } : null;
-            });
-            const trinketId = fi['item_6'] ?? 0;
-            const xtrinket = trinketId ? { id: trinketId, icon: `${base}/img/item/${trinketId}.png` } : null;
-            teams.push({
-              name: x.riot_id_name || x.summoner_name || '?', tag: x.riot_id_tag_line || '',
-              champ: xc, icon: `${base}/img/champion/${xc}.png`,
-              kills: xfs.kills ?? 0, deaths: xfs.deaths ?? 0, assists: xfs.assists ?? 0,
-              ai: xfs.ai_score ?? null, lvl: xfs.champion_level ?? null,
-              dmg: x.total_damage_dealt ?? 0,
-              cs: xfs.cs ?? 0,
-              gold: x.total_gold ?? 0, items: [...xitems, xtrinket], trinket: xtrinket,
-              tier: [x.tier, x.division].filter(Boolean).join(' '),
-              side: x.side, win: blueWin == null ? !!x.is_win : ((x.side === 'BLUE') === !!blueWin)
-            });
+        for (const x of plist) {
+          const xfs = x.final_stat_dict || {};
+          const xc = (x.champion_id && await champIdToName(x.champion_id)) || ('#' + x.champion_id);
+          const fi = x.final_item_dict || {};
+          const xitems = [0, 1, 2, 3, 4, 5].map((k) => {
+            const id = fi['item_' + k] ?? 0;
+            return id ? { id, icon: `${base}/img/item/${id}.png` } : null;
+          });
+          const trinketId = fi['item_6'] ?? 0;
+          const xtrinket = trinketId ? { id: trinketId, icon: `${base}/img/item/${trinketId}.png` } : null;
+          const xspells = [
+            await getSpellIcon(x.spell_id_dict?.spell_1),
+            await getSpellIcon(x.spell_id_dict?.spell_2),
+          ].filter(Boolean);
+          const xrunes = [
+            await getRuneIcon(x.rune_detail_dict?.perk_0),
+            await getRuneIcon(x.rune_detail_dict?.perk_sub_style),
+          ].filter(Boolean);
+
+          teams.push({
+            name: x.riot_id_name || x.summoner_name || '?', tag: x.riot_id_tag_line || '',
+            champ: xc, icon: `${base}/img/champion/${xc}.png`,
+            kills: xfs.kills ?? 0, deaths: xfs.deaths ?? 0, assists: xfs.assists ?? 0,
+            ai: xfs.ai_score ?? null, lvl: xfs.champion_level ?? null,
+            dmg: x.total_damage_dealt ?? 0,
+            cs: xfs.cs ?? 0,
+            gold: x.total_gold ?? 0, items: [...xitems, xtrinket], trinket: xtrinket,
+            spells: xspells, runes: xrunes,
+            tier: [x.tier, x.division].filter(Boolean).join(' '),
+            side: x.side, win: blueWin == null ? !!x.is_win : ((x.side === 'BLUE') === !!blueWin),
+            mvp: !!x.mvp, ace: !!x.ace, position: x.position || ''
+          });
         }
         const m = {
           id: matchId, champ: cname, icon: `${base}/img/champion/${cname}.png`,
@@ -444,7 +828,11 @@ app.whenReady().then(async () => {
           win: !!p.is_win, queue: det?.match_basic_dict?.queue_id, mode: '',
           dur: det?.match_basic_dict?.game_duration ?? null,
           ts: det?.match_basic_dict?.creation_timestamp ?? null,
-          cs: fs.cs ?? 0, ai: fs.ai_score ?? null, teams
+          cs: fs.cs ?? 0, ai: fs.ai_score ?? null,
+          spells: mySpells, runes: myRunes,
+          mvp: !!p.mvp, ace: !!p.ace, position: p.position || '',
+          teamDiff,
+          teams
         };
         dlMatchCache.set(matchId, { ts: Date.now(), m });
         return { m };
@@ -607,7 +995,6 @@ app.whenReady().then(async () => {
       return { ok: false, error: String(e?.message ?? e) };
     }
   });
-  startLcuLoops();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

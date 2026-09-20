@@ -125,15 +125,18 @@ async function extractActiveRunesFromDOM(runeNameMap, fallbackStats) {
   try {
     const result = await webFrame.executeJavaScript(`
       (() => {
-        // Locate the runes card
-        const allHeaders = Array.from(document.querySelectorAll('*'));
-        const runesH = allHeaders.find(el =>
-          el.textContent?.trim()?.endsWith('Runes') &&
+        // Locate the runes card robustly
+        let runesCard = document.querySelector('.cardBorder, [class*="card"]');
+        const candidates = Array.from(document.querySelectorAll('*'));
+        const runesH = candidates.find(el =>
           el.children.length === 0 &&
-          el.textContent.trim().length < 30
+          /runes/i.test(el.textContent?.trim()) &&
+          el.textContent.trim().length < 35
         );
-        if (!runesH) return null;
-        const runesCard = runesH.closest('.cardBorder') || runesH.closest('[class*="card"]') || runesH.parentElement?.parentElement;
+        if (runesH) {
+          const found = runesH.closest('.cardBorder') || runesH.closest('[class*="card"]') || runesH.parentElement?.parentElement;
+          if (found) runesCard = found;
+        }
         if (!runesCard) return null;
 
         // Find active tab and its panel
@@ -348,7 +351,7 @@ async function parseBuild() {
 }
 
 // ---- Settings Management ----
-const DEF_SETTINGS = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, flashSlot: 'D', apiKey: '', region: 'tr1' };
+const DEF_SETTINGS = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, overlay: false, flashSlot: 'D', apiKey: '', region: 'tr1' };
 let settings = { ...DEF_SETTINGS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('otp.settings') || '{}')); } catch {}
 function saveSettings() {
@@ -427,7 +430,7 @@ const CSS = `
 .otp-gear:hover { background: rgb(35, 38, 41); border-color: #aaa; }
 
 /* Settings Popover */
-#otp-popover {
+.otp-popover {
   display: none; position: absolute; top: 40px; right: 0;
   width: 240px; background: rgb(24, 26, 27);
   border: 1px solid rgb(85, 85, 85); border-radius: 6px;
@@ -435,7 +438,12 @@ const CSS = `
   padding: 6px; font-family: inherit; font-size: 12px;
   color: rgb(232, 230, 227); z-index: 10000;
 }
-#otp-popover.open { display: block; }
+.otp-popover.open { display: block; }
+
+/* Floating settings (non-build pages, e.g. homepage) */
+#otp-float-settings { position: fixed; right: 18px; bottom: 18px; z-index: 10001; }
+#otp-float-settings .otp-gear { width: 40px; height: 40px; border-radius: 50%; box-shadow: 0 6px 20px rgba(0,0,0,0.55); }
+#otp-float-settings .otp-popover { position: absolute; top: auto; bottom: 50px; right: 0; }
 
 .otp-popover-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -526,6 +534,7 @@ function togglePopover() {
   const popover = document.getElementById('otp-popover');
   if (!popover) return;
   popover.classList.toggle('open');
+  if (popover.classList.contains('open')) paintSettingsPopover(popover);
 }
 
 // ---- Inject CSS ----
@@ -589,46 +598,8 @@ function injectHeaderActions() {
   gearBtn.innerHTML = GEAR_SVG;
   gearBtn.onclick = (e) => { e.stopPropagation(); togglePopover(); };
 
-  // Settings popover
-  const popover = document.createElement('div');
-  popover.id = 'otp-popover';
-  popover.innerHTML = `
-    <div class="otp-popover-head">
-      <span>LoL Client</span>
-      <span class="otp-popover-status">
-        <span class="otp-dot ${clientState.connected ? 'connected' : ''}"></span>
-        <span id="otp-status-label">${clientState.connected ? clientState.name : 'Offline'}</span>
-      </span>
-    </div>
-    <div style="padding: 4px 0;">
-      <div class="otp-switch-row" data-k="follow">
-        <span>Auto Follow Pick</span>
-        <span class="otp-sw"></span>
-      </div>
-      <div class="otp-switch-row" data-k="autoBuild">
-        <span>Auto Import on Lock-in</span>
-        <span class="otp-sw"></span>
-      </div>
-      <div class="otp-switch-row" data-k="autoAccept">
-        <span>Auto Accept Match</span>
-        <span class="otp-sw"></span>
-      </div>
-      <div class="otp-switch-row" data-k="autoSpell">
-        <span>Auto Select Spells</span>
-        <span class="otp-sw"></span>
-      </div>
-    </div>
-    <div style="padding:6px 8px;border-top:1px solid rgb(50,53,56);">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0;user-select:none;">
-        <span style="font-size:12px;color:#e8e6e3;font-weight:500;">Flash Key</span>
-        <div id="otp-flash-group" style="display:inline-flex;background:rgb(15,18,20);border:1px solid rgb(70,75,85);border-radius:4px;overflow:hidden;">
-          <button type="button" class="otp-flash-btn" data-slot="D" style="padding:3px 12px;font-size:11px;font-weight:700;border:none;cursor:pointer;outline:none;transition:all 0.15s ease;">D</button>
-          <button type="button" class="otp-flash-btn" data-slot="F" style="padding:3px 12px;font-size:11px;font-weight:700;border:none;cursor:pointer;outline:none;transition:all 0.15s ease;">F</button>
-        </div>
-      </div>
-    </div>
-    <div id="otp-log" class="otp-popover-log"></div>
-  `;
+  // Settings popover (shared builder — also used by floating settings on other pages)
+  const popover = buildSettingsPopover();
 
   bar.appendChild(importBtn);
   bar.appendChild(gearBtn);
@@ -645,57 +616,126 @@ function injectHeaderActions() {
     } catch {}
   });
 
-  // Wire up setting switches
-  const paintSwitches = () => {
-    bar.querySelectorAll('.otp-switch-row').forEach(r => {
-      r.classList.toggle('on', !!settings[r.dataset.k]);
-    });
-  };
-  bar.querySelectorAll('.otp-switch-row').forEach(r => {
+  updateClientStatusUI();
+}
+
+// ---- Shared settings popover (build page bar + floating button) ----
+function paintSettingsPopover(popover) {
+  if (!popover) return;
+  popover.querySelectorAll('.otp-switch-row').forEach(r => {
+    r.classList.toggle('on', !!settings[r.dataset.k]);
+  });
+  const cur = (settings.flashSlot || 'D').toUpperCase();
+  popover.querySelectorAll('.otp-flash-btn').forEach(btn => {
+    const isSel = btn.dataset.slot === cur;
+    btn.style.background = isSel ? 'rgb(16, 99, 183)' : 'transparent';
+    btn.style.color = isSel ? '#ffffff' : '#8f96a3';
+  });
+}
+
+function buildSettingsPopover() {
+  const old = document.getElementById('otp-popover');
+  if (old) old.remove();
+  const popover = document.createElement('div');
+  popover.id = 'otp-popover';
+  popover.className = 'otp-popover';
+  popover.innerHTML = `
+    <div class="otp-popover-head">
+      <span>LoL Client</span>
+      <span class="otp-popover-status">
+        <span class="otp-dot ${clientState.connected ? 'connected' : ''}"></span>
+        <span id="otp-status-label">${clientState.connected ? clientState.name : 'Offline'}</span>
+      </span>
+    </div>
+    <div style="padding: 4px 0;">
+      <div class="otp-switch-row" data-k="follow">
+        <span>Auto Follow Pick</span>
+        <span class="otp-sw"></span>
+      </div>
+      <div class="otp-switch-row" data-k="autoBuild">
+        <span>Auto Import (Hover / Pick)</span>
+        <span class="otp-sw"></span>
+      </div>
+      <div class="otp-switch-row" data-k="autoAccept">
+        <span>Auto Accept Match</span>
+        <span class="otp-sw"></span>
+      </div>
+      <div class="otp-switch-row" data-k="autoSpell">
+        <span>Auto Select Spells</span>
+        <span class="otp-sw"></span>
+      </div>
+      <div class="otp-switch-row" data-k="overlay">
+        <span>In-Game Overlay</span>
+        <span class="otp-sw"></span>
+      </div>
+    </div>
+    <div style="padding:6px 8px;border-top:1px solid rgb(50,53,56);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0;user-select:none;">
+        <span style="font-size:12px;color:#e8e6e3;font-weight:500;">Flash Key</span>
+        <div id="otp-flash-group" style="display:inline-flex;background:rgb(15,18,20);border:1px solid rgb(70,75,85);border-radius:4px;overflow:hidden;">
+          <button type="button" class="otp-flash-btn" data-slot="D" style="padding:3px 12px;font-size:11px;font-weight:700;border:none;cursor:pointer;outline:none;transition:all 0.15s ease;">D</button>
+          <button type="button" class="otp-flash-btn" data-slot="F" style="padding:3px 12px;font-size:11px;font-weight:700;border:none;cursor:pointer;outline:none;transition:all 0.15s ease;">F</button>
+        </div>
+      </div>
+    </div>
+    <div id="otp-log" class="otp-popover-log"></div>
+  `;
+  popover.querySelectorAll('.otp-switch-row').forEach(r => {
     r.onclick = (e) => {
       e.stopPropagation();
       settings[r.dataset.k] = !settings[r.dataset.k];
       saveSettings();
-      paintSwitches();
+      paintSettingsPopover(popover);
     };
   });
-  paintSwitches();
-
-  // Wire up Flash key buttons
-  const paintFlashBtns = () => {
-    const cur = (settings.flashSlot || 'D').toUpperCase();
-    bar.querySelectorAll('.otp-flash-btn').forEach(btn => {
-      const isSel = btn.dataset.slot === cur;
-      btn.style.background = isSel ? 'rgb(16, 99, 183)' : 'transparent';
-      btn.style.color = isSel ? '#ffffff' : '#8f96a3';
-    });
-  };
-  bar.querySelectorAll('.otp-flash-btn').forEach(btn => {
+  popover.querySelectorAll('.otp-flash-btn').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();
       settings.flashSlot = btn.dataset.slot;
       saveSettings();
-      paintFlashBtns();
+      paintSettingsPopover(popover);
       toast(`Flash assigned to ${settings.flashSlot} key`);
     };
   });
-  paintFlashBtns();
+  paintSettingsPopover(popover);
+  return popover;
+}
 
-
-  // Close popover when clicking outside
-  document.addEventListener('click', (e) => {
-    const pop = document.getElementById('otp-popover');
-    if (pop && !bar.contains(e.target)) {
-      pop.classList.remove('open');
-    }
-  });
-
+// ---- Floating settings button for non-build pages (homepage etc.) ----
+function injectFloatingSettings() {
+  const isBuildPage = location.pathname.includes('/champions/builds/');
+  const existing = document.getElementById('otp-float-settings');
+  if (isBuildPage) {
+    if (existing) existing.remove();
+    return;
+  }
+  if (existing) return;
+  const wrap = document.createElement('div');
+  wrap.id = 'otp-float-settings';
+  const gearBtn = document.createElement('button');
+  gearBtn.className = 'otp-gear';
+  gearBtn.title = 'OTP Settings';
+  gearBtn.innerHTML = GEAR_SVG;
+  gearBtn.onclick = (e) => { e.stopPropagation(); togglePopover(); };
+  wrap.appendChild(gearBtn);
+  wrap.appendChild(buildSettingsPopover());
+  document.body.appendChild(wrap);
   updateClientStatusUI();
+}
+
+// Close any open settings popover when clicking outside (registered once)
+if (!window._otpCloser) {
+  window._otpCloser = true;
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.otp-popover') || e.target.closest('#otp-header-actions') || e.target.closest('#otp-float-settings')) return;
+    document.querySelectorAll('.otp-popover.open').forEach(p => p.classList.remove('open'));
+  });
 }
 
 function mountUI() {
   injectStyles();
   injectHeaderActions();
+  injectFloatingSettings();
   injectTierNav();
   checkPendingAutoImport();
 }
@@ -706,8 +746,8 @@ document.addEventListener('click', (e) => {
   const target = e.target;
   if (!target) return;
 
-  // Ignore clicks inside our own header bar or popover
-  if (target.closest('#otp-header-actions')) return;
+  // Ignore clicks inside our own header bar, floating settings, or popover
+  if (target.closest('#otp-header-actions') || target.closest('#otp-float-settings') || target.closest('.otp-popover')) return;
 
   if (!location.pathname.includes('/champions/builds/')) return;
 
@@ -724,7 +764,7 @@ document.addEventListener('click', (e) => {
       } catch (err) {
         console.error('[otp] instant auto-import failed:', err);
       }
-    }, 60);
+    }, 250);
   }
 }, true);
 
@@ -756,7 +796,7 @@ ipcRenderer.on('otp:auto-champ', async (_e, info) => {
   if (!name) return;
   const want = name.toLowerCase();
 
-  // If already on the page for this champion, import directly from the page!
+  // If already on the page for this champion, run import directly
   const isCur = location.pathname.toLowerCase().includes(`/champions/builds/${want}`);
   if (isCur) {
     if (settings.autoBuild && lastAutoImport !== want) {
@@ -766,18 +806,10 @@ ipcRenderer.on('otp:auto-champ', async (_e, info) => {
     return;
   }
 
-  // Not on this champion's page yet: save pending import
+  // If follow will navigate or user is switching champions, queue auto-import for when the page arrives
   if (settings.autoBuild && lastAutoImport !== want) {
     lastAutoImport = want;
     try { localStorage.setItem('otp.pendingAuto', want); } catch {}
-  }
-
-  // Navigate if follow is enabled
-  if (settings.follow) {
-    const target = `/champions/builds/${want}`;
-    if (!location.pathname.toLowerCase().includes(target)) {
-      location.href = `https://www.onetricks.gg/champions/builds/${encodeURIComponent(name)}`;
-    }
   }
 });
 
@@ -912,7 +944,14 @@ window.addEventListener('DOMContentLoaded', () => {
   }, 350);
 
   // Re-inject UI only when URL changes or required elements are missing
-  new MutationObserver(() => {
+  new MutationObserver((mutations) => {
+    // Ignore mutations triggered solely by our own elements
+    const onlyOtp = mutations.every(m => {
+      const t = m.target;
+      return t && (t.id?.startsWith('otp-') || t.className?.includes('otp-'));
+    });
+    if (onlyOtp) return;
+
     const isBuild = location.pathname.includes('/champions/builds/');
     const pathChanged = location.pathname !== _lastPath;
 
@@ -923,10 +962,11 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     const needsHeader = isBuild && !document.getElementById('otp-header-actions');
+    const needsFloat = !isBuild && !document.getElementById('otp-float-settings');
     const needsTier = !document.getElementById('otp-tiernav') || !document.getElementById('otp-sumnav');
 
-    if (needsHeader || needsTier) {
-      requestMountUI(120);
+    if (needsHeader || needsFloat || needsTier) {
+      requestMountUI(150);
     }
   }).observe(document.body || document.documentElement, { childList: true, subtree: true });
 });

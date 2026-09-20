@@ -22,6 +22,8 @@
       "tierlist.html",
       "summoner-preload.js",
       "summoner.html",
+      "overlay-preload.js",
+      "overlay.html",
       "package.json",
       "assets/"
     ],
