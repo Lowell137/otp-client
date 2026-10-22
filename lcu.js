@@ -1,13 +1,14 @@
 // LCU layer: reads lockfile via league-connect and writes runes, item sets, and spells.
 // Only official LCU REST APIs are used (no memory manipulation or injection).
 
-const { authenticate, request } = require('league-connect');
+const { request } = require('league-connect');
+const { getCreds: findLcuCreds } = require('./lcu-creds');
 
 let cachedCreds = null;
 async function getCreds(force = false) {
   if (cachedCreds && !force) return cachedCreds;
   try {
-    cachedCreds = await authenticate({ awaitConnection: false });
+    cachedCreds = await findLcuCreds();
     return cachedCreds;
   } catch (e) {
     cachedCreds = null;
