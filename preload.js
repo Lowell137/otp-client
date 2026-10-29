@@ -399,6 +399,9 @@ const CSS = `
 /* Hide video ads that displace header layout */
 .video-ad-center, .video-ad-top, .video-ad { display: none !important; }
 
+/* Hide Get Pro button */
+a.get-pro-btn, .get-pro-btn { display: none !important; }
+
 /* Primary "Import" Button matching site primary style */
 .otp-btn {
   background: rgb(16, 99, 183);
@@ -563,6 +566,13 @@ function injectStyles() {
   st.id = 'otp-injected-css';
   st.textContent = CSS;
   document.head.appendChild(st);
+}
+
+// ---- Remove "Get Pro" button from page ----
+function removeGetProButton() {
+  try {
+    document.querySelectorAll('a.get-pro-btn, .get-pro-btn').forEach(el => el.remove());
+  } catch {}
 }
 
 // ---- Inject UI: Inline with champion title, vertically centered ----
@@ -753,6 +763,7 @@ if (!window._otpCloser) {
 
 function mountUI() {
   injectStyles();
+  removeGetProButton();
   injectHeaderActions();
   injectFloatingSettings();
   injectTierNav();
@@ -835,7 +846,7 @@ ipcRenderer.on('otp:auto-champ', async (_e, info) => {
 // ---- Tier List: hide PRO badges, themed Tier button + overlay, remove ad slots ----
 const TIER_CSS = `
 .pro-badge{display:none !important}
-a.pro-btn,button.pro-btn{display:none !important}
+a.pro-btn,button.pro-btn,a.get-pro-btn{display:none !important}
 .header-menu-btn, .home-header-menu-btn{display:none !important}
 a[href*="discord"], .sidePanel{display:none !important}
 #otp-tiernav,#otp-sumnav{display:inline-flex !important;align-items:center !important;cursor:pointer !important}
@@ -984,9 +995,9 @@ window.addEventListener('DOMContentLoaded', () => {
     const needsFloat = !isBuild && !document.getElementById('otp-float-settings');
     const needsTier = !document.getElementById('otp-tiernav') || !document.getElementById('otp-sumnav');
 
-    if (needsHeader || needsFloat || needsTier) {
-      requestMountUI(150);
-    }
+    // Also remove Get Pro button if it reappears
+    const getProBtn = document.querySelector('a.get-pro-btn, .get-pro-btn');
+    if (getProBtn) getProBtn.remove();
   }).observe(document.body || document.documentElement, { childList: true, subtree: true });
 });
 
