@@ -587,8 +587,9 @@ app.whenReady().then(async () => {
   // My account: everything via LCU, no key, no typing
   ipcMain.handle('otp:myaccount', async () => {
     try {
-      const { authenticate, request } = require('league-connect');
-      const creds = await authenticate({ awaitConnection: false });
+      const { request } = require('league-connect');
+      const { getCreds } = require('./lcu-creds');
+      const creds = await getCreds();
       const r = await request({ method: 'GET', url: '/lol-summoner/v1/current-summoner' }, creds);
       const sum = await r.json();
       return await buildPlayerData(creds, sum.puuid, {
@@ -602,8 +603,9 @@ app.whenReady().then(async () => {
   // Lobby scouting: whole team in champ select, no key, no typing
   ipcMain.handle('otp:lobby', async () => {
     try {
-      const { authenticate, request } = require('league-connect');
-      const creds = await authenticate({ awaitConnection: false });
+      const { request } = require('league-connect');
+      const { getCreds } = require('./lcu-creds');
+      const creds = await getCreds();
       const r = await request({ method: 'GET', url: '/lol-champ-select/v1/session' }, creds);
       if (r.status !== 200) throw new Error('Not in champion select');
       const s = await r.json();

@@ -18,6 +18,7 @@
       "main.js",
       "preload.js",
       "lcu.js",
+      "lcu-creds.js",
       "tier-preload.js",
       "tierlist.html",
       "summoner-preload.js",
