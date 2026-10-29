@@ -895,10 +895,10 @@ function injectTierNav() {
       const parent = origTier.parentElement;
       const isGap = parent && getComputedStyle(parent).gap && getComputedStyle(parent).gap !== 'normal';
       if (isGap) {
-        sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;display:inline-flex !important;align-items:center;white-space:nowrap;margin:0 !important;';
+        sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;display:inline-flex !important;align-items:center;white-space:nowrap;margin:0 0 0 12px !important;';
         sb.innerHTML = '<div style="color:var(--text);">Summoner</div>';
       } else {
-        sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;display:inline-flex !important;align-items:center;margin:0;';
+        sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;display:inline-flex !important;align-items:center;margin:0 0 0 12px;';
         sb.innerHTML = '<div style="color:var(--text);display:inline-block;">Summoner</div>';
       }
       origTier.after(sb);
