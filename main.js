@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, screen, dialog } = require('electron');
 const path = require('path');
 
 // Disable transparent window hardware acceleration issues on Windows that can freeze DWM / DirectX
@@ -527,9 +527,43 @@ function registerOverlayIpc() {
   });
 }
 
+// ---- Auto update (GitHub releases of Lowell137/otp-client via electron-updater) ----
+// Packaged builds only. Checks on start and every 4 hours, downloads in the
+// background, then asks to restart; "Later" installs on the next quit.
+function setupAutoUpdate() {
+  if (!app.isPackaged) return;
+  let autoUpdater;
+  try { ({ autoUpdater } = require('electron-updater')); } catch (e) {
+    console.warn('[otp] updater unavailable:', e?.message || e);
+    return;
+  }
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('error', (e) => console.warn('[otp] update error:', e?.message || e));
+  autoUpdater.on('update-available', (i) => console.log('[otp] update available:', i?.version));
+  let asked = false;
+  autoUpdater.on('update-downloaded', async (info) => {
+    if (asked || !win || win.isDestroyed()) return;
+    asked = true;
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'info',
+      title: 'OTP Client',
+      message: `Update ${info?.version || ''} is ready`,
+      detail: 'Restart now to install it, or it will be installed when you close the app.',
+      buttons: ['Restart now', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response === 0) setImmediate(() => autoUpdater.quitAndInstall(false, true));
+  });
+  const check = () => autoUpdater.checkForUpdates().catch((e) => console.warn('[otp] update check failed:', e?.message || e));
+  setTimeout(check, 5000);
+  setInterval(check, 4 * 60 * 60 * 1000);
+}
 
 app.whenReady().then(async () => {
   await createWindow();
+  setupAutoUpdate();
   const lcu = require('./lcu.js');
   lcu.registerIpc(ipcMain);
   registerOverlayIpc();

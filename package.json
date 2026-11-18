@@ -5,8 +5,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win",
-    "dist:win": "electron-builder --win"
+    "dist": "electron-builder --win --publish never",
+    "dist:win": "electron-builder --win --publish never"
   },
   "build": {
     "appId": "com.otp.client",
@@ -40,14 +40,28 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "OTP Client"
-    }
+      "shortcutName": "OTP Client",
+      "artifactName": "OTP-Client-Setup-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Lowell137",
+        "repo": "otp-client",
+        "releaseType": "release"
+      }
+    ]
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "league-connect": "^5.5.0"
   },
   "devDependencies": {
     "electron": "^31.0.0",
     "electron-builder": "^26.15.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Lowell137/otp-client.git"
   }
 }
