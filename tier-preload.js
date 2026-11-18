@@ -280,6 +280,8 @@ function renderTable() {
   COLS.forEach((c) => {
     const th = document.createElement('th');
     th.textContent = c.label + (sortKey === c.k ? (sortDir === 1 ? ' ▲' : ' ▼') : '');
+    // Align each header with its cells: # and Lane centered, numbers right.
+    th.style.textAlign = (c.k === 'rank' || c.k === 'lane') ? 'center' : (c.num ? 'right' : 'left');
     th.onclick = () => {
       if (sortKey === c.k) sortDir *= -1;
       else { sortKey = c.k; sortDir = c.k === 'name' ? 1 : 1; }
