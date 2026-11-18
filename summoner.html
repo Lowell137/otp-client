@@ -12,7 +12,7 @@
     background-color: #0f1015;
     background-image:
       linear-gradient(rgba(10, 12, 16, 0.88), rgba(13, 15, 20, 0.94)),
-      url("https://ddragon.leagueoflegends.com/cdn/img/champion/splash/Camille_31.jpg"),
+      var(--otp-splash, none),
       linear-gradient(180deg, #0d1017 0%, #0f1115 60%, #0d0f14 100%);
     background-position: center top;
     background-size: cover;
@@ -24,18 +24,20 @@
     -webkit-font-smoothing: antialiased;
   }
   #otp-wrap { max-width: 1180px; margin: 0 auto; padding: 16px 20px 60px; }
-  #otp-top { display: flex; align-items: center; gap: 10px; margin: 4px 0 16px; }
+  #otp-top { display: flex; align-items: center; gap: 12px; margin: 4px 0 16px; }
   #otp-top h1 { font-size: 20px; margin: 0; flex: 1; font-weight: 700; color: #f3f4f6; }
   #otp-back {
+    width: 32px; height: 32px; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
     background: #16181f;
     border: 1px solid #282b36;
-    color: #e8e6e3;
-    border-radius: 6px;
-    font-size: 14px;
-    padding: 4px 12px;
+    color: #c9ccd4;
+    border-radius: 8px;
+    padding: 0;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
   }
+  #otp-back svg { width: 16px; height: 16px; display: block; }
   #otp-back:hover { background: #1063b7; border-color: #1063b7; color: #fff; }
 
   /* Hero Section */
@@ -957,7 +959,7 @@
 </head>
 <body>
 <div id="otp-wrap">
-  <div id="otp-top"><button id="otp-back" title="Back">←</button><h1>Summoner Lookup</h1></div>
+  <div id="otp-top"><button id="otp-back" title="Back" aria-label="Back"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button><h1>Summoner Lookup</h1></div>
   <div id="otp-hero">
     <h2>Whose game are we checking?</h2>
     <div id="otp-sbar">
@@ -982,5 +984,6 @@
   <div id="otp-sbody"></div>
 <div id="otp-foot">Keyless lookup · Data: deeplol · Click a match for both teams</div>
   </div>
+<script src="bg.js"></script>
 </body>
 </html>

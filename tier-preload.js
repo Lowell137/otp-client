@@ -203,6 +203,14 @@ async function parseTierQwik(html) {
   return out.length ? out : null;
 }
 
+// "S-" with an ASCII hyphen renders as a tiny low dash; show a real minus
+// sign (and the plus) as a same-weight modifier next to the letter.
+function tierHtml(t) {
+  const m = String(t || '').match(/^([A-Z])([+-]?)$/);
+  if (!m) return esc(t);
+  return m[2] ? `${m[1]}<span class="tmod">${m[2] === '-' ? '−' : '+'}</span>` : m[1];
+}
+
 function tierIdx(t) {
   const i = TIER_ORDER.indexOf(t);
   return i < 0 ? 99 : i;
@@ -249,7 +257,8 @@ function render() {
   tiers.forEach((t) => {
     const b = document.createElement('button');
     b.className = 'otp-chip' + (t === tierFilter ? ' sel' : '');
-    b.textContent = t;
+    b.dataset.t = t;
+    if (t === 'All') b.textContent = t; else b.innerHTML = tierHtml(t);
     if (t !== 'All') b.style.borderColor = TIER_COLORS[t] || '#888';
     b.onclick = () => { tierFilter = t; renderTable(); renderChips(); };
     chips.appendChild(b);
@@ -259,7 +268,7 @@ function render() {
 
 function renderChips() {
   document.querySelectorAll('#otp-chips .otp-chip').forEach((b) => {
-    b.classList.toggle('sel', b.textContent === tierFilter);
+    b.classList.toggle('sel', b.dataset.t === tierFilter);
   });
 }
 
@@ -286,7 +295,7 @@ function renderTable() {
     <tr data-i="${i}">
       <td class="c">${r.rank}</td>
       <td><div class="otp-champ"><img loading="lazy" src="${r.icon}" alt=""><b>${esc(r.name)}</b></div></td>
-      <td><span class="otp-tier" style="background:${TIER_COLORS[r.tier] || '#888'}">${r.tier}</span></td>
+      <td><span class="otp-tier" style="background:${TIER_COLORS[r.tier] || '#888'}">${tierHtml(r.tier)}</span></td>
       <td class="c">${esc(cap(r.lane))}${r.lanePct != null ? ` <span class="dim">${r.lanePct}%</span>` : ''}</td>
       <td class="r"><b>${r.win != null ? r.win.toFixed(2) + '%' : '—'}</b>${r.delta != null ? ` <span class="dim">${r.delta > 0 ? '+' : ''}${r.delta.toFixed(2)}</span>` : ''}</td>
       <td class="r">${r.pick != null ? r.pick.toFixed(2) : '—'}</td>

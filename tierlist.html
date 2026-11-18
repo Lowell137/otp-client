@@ -12,7 +12,7 @@
     background-color: #0f1015;
     background-image:
       linear-gradient(rgba(10, 12, 16, 0.88), rgba(13, 15, 20, 0.94)),
-      url("https://ddragon.leagueoflegends.com/cdn/img/champion/splash/Orianna_7.jpg"),
+      var(--otp-splash, none),
       linear-gradient(180deg, #0d1017 0%, #0f1115 60%, #0d0f14 100%);
     background-position: center top;
     background-size: cover;
@@ -24,19 +24,21 @@
     -webkit-font-smoothing: antialiased;
   }
   #otp-wrap { max-width: 1040px; margin: 0 auto; padding: 20px 20px 60px; }
-  #otp-top { display: flex; align-items: baseline; gap: 10px; margin: 4px 0 16px; }
+  #otp-top { display: flex; align-items: center; gap: 12px; margin: 4px 0 16px; }
   #otp-top h1 { font-size: 20px; margin: 0; font-weight: 700; color: #f3f4f6; }
   #otp-patch { font-size: 12px; color: #8f96a3; }
   #otp-back {
+    width: 32px; height: 32px; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
     background: #161821;
     border: 1px solid #282d3b;
-    color: #e8e6e3;
-    border-radius: 6px;
-    font-size: 14px;
-    padding: 4px 12px;
+    color: #c9ccd4;
+    border-radius: 8px;
+    padding: 0;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
   }
+  #otp-back svg { width: 16px; height: 16px; display: block; }
   #otp-back:hover { background: #1063b7; border-color: #1063b7; color: #fff; }
 
   #otp-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
@@ -99,6 +101,7 @@
     cursor: pointer;
     transition: all 0.15s ease;
   }
+  .tmod { display: inline-block; margin-left: 1px; font-weight: 800; line-height: 1; }
   .otp-chip:hover { border-color: #555d73; }
   .otp-chip.sel { background: #1063b7; border-color: #1063b7 !important; color: #fff; }
 
@@ -141,7 +144,7 @@
 </head>
 <body>
 <div id="otp-wrap">
-  <div id="otp-top"><button id="otp-back" title="Back">←</button><h1>Tier List</h1><span id="otp-patch"></span></div>
+  <div id="otp-top"><button id="otp-back" title="Back" aria-label="Back"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button><h1>Tier List</h1><span id="otp-patch"></span></div>
   <div id="otp-bar"><div id="otp-tabs" style="display:flex;gap:8px;flex-wrap:wrap"></div><input id="otp-q" placeholder="Search champion…" autocomplete="off"></div>
   <div id="otp-filters">
     <label>Rank <select id="otp-tier"></select></label>
@@ -152,5 +155,6 @@
   <table id="otp-tbl"><thead><tr></tr></thead><tbody></tbody></table>
   <div id="otp-foot">Data: Lolalytics (Emerald+) · Click a row → open build page</div>
 </div>
+<script src="bg.js"></script>
 </body>
 </html>

@@ -25,6 +25,9 @@
       "summoner.html",
       "overlay-preload.js",
       "overlay.html",
+      "titlebar.html",
+      "titlebar-preload.js",
+      "bg.js",
       "package.json",
       "assets/"
     ],

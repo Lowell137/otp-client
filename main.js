@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, screen } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, shell, screen } = require('electron');
 const path = require('path');
 
 // Disable transparent window hardware acceleration issues on Windows that can freeze DWM / DirectX
@@ -126,13 +126,13 @@ function startLcuLoops() {
 
             // 1. Follow in browser window first or sync URL
             if (win && !win.isDestroyed()) {
-              win.webContents.send('otp:auto-champ', name);
+              view.webContents.send('otp:auto-champ', name);
               if (flags.follow) {
-                const curUrl = win.webContents.getURL() || '';
+                const curUrl = view.webContents.getURL() || '';
                 const targetSlug = encodeURIComponent(name).toLowerCase();
                 if (!curUrl.toLowerCase().includes(`/champions/builds/${targetSlug}`)) {
-                  win.webContents.session.setPreloads([path.join(__dirname, 'preload.js')]);
-                  await win.loadURL(`https://www.onetricks.gg/champions/builds/${encodeURIComponent(name)}`).catch(() => {});
+                  view.webContents.session.setPreloads([path.join(__dirname, 'preload.js')]);
+                  await view.webContents.loadURL(`https://www.onetricks.gg/champions/builds/${encodeURIComponent(name)}`).catch(() => {});
                 }
               }
             }
@@ -145,7 +145,7 @@ function startLcuLoops() {
               // Try extracting build from open browser window first (bypasses Cloudflare / 429 rate limits)
               if (win && !win.isDestroyed()) {
                 try {
-                  build = await win.webContents.executeJavaScript(`
+                  build = await view.webContents.executeJavaScript(`
                     (async () => {
                       try {
                         if (window.otp?.parseBuild) {
@@ -180,7 +180,7 @@ function startLcuLoops() {
                 const sOk = spellRes.status === 'fulfilled' && !!spellRes.value;
                 console.log(`[otp] Instant hover import finished for ${name}: runes=${rOk} spells=${sOk}`);
                 if (win && !win.isDestroyed()) {
-                  win.webContents.send('otp:auto-imported', {
+                  view.webContents.send('otp:auto-imported', {
                     name,
                     spells: sOk,
                     rate: build.rate
@@ -216,18 +216,104 @@ function startLcuLoops() {
   }, 1000);
 }
 
+// Custom title bar: the window's own webContents draws titlebar.html (36 px);
+// the site / local pages live in `view` underneath. Windows keeps its native
+// min/max/close buttons through titleBarOverlay.
+const TITLEBAR_H = 36;
+let view = null;
+function layoutView() {
+  if (!win || win.isDestroyed() || !view) return;
+  const [w, h] = win.getContentSize();
+  view.setBounds({ x: 0, y: TITLEBAR_H, width: w, height: Math.max(0, h - TITLEBAR_H) });
+}
+function pageKind(url) {
+  const u = String(url || '');
+  if (u.endsWith('tierlist.html')) return 'tier';
+  if (u.endsWith('summoner.html')) return 'summoner';
+  if (/onetricks\.gg\/champions\/builds\//i.test(u)) return 'build';
+  if (/onetricks\.gg/i.test(u)) return 'home';
+  return 'other';
+}
+function preloadFor(url) {
+  const k = pageKind(url);
+  if (k === 'tier') return path.join(__dirname, 'tier-preload.js');
+  if (k === 'summoner') return path.join(__dirname, 'summoner-preload.js');
+  return path.join(__dirname, 'preload.js');
+}
+let tbLcu = { state: 'off' };
+function sendTitlebar() {
+  if (!win || win.isDestroyed() || !view) return;
+  const wc = view.webContents;
+  const url = wc.getURL();
+  const champ = (url.match(/\/champions\/builds\/([^/?#]+)/i) || [])[1];
+  win.webContents.send('tb:state', {
+    page: pageKind(url),
+    champ: champ ? decodeURIComponent(champ) : null,
+    canBack: wc.canGoBack(),
+    canFwd: wc.canGoForward(),
+    loading: wc.isLoading(),
+    maximized: win.isMaximized(),
+    lcu: tbLcu,
+  });
+}
+
 async function createWindow() {
   win = new BrowserWindow({
     width: 1360,
     height: 860,
+    minWidth: 900,
+    minHeight: 560,
     show: true,
     autoHideMenuBar: true,
     backgroundColor: '#0b0e14',
     icon: path.join(__dirname, 'assets/icon.ico'),
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#0b0e14', symbolColor: '#c9ccd4', height: TITLEBAR_H },
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'titlebar-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      // own in-memory session: session-wide preloads set for the content view never reach it
+      partition: 'otp-titlebar'
+    }
+  });
+  win.loadFile(path.join(__dirname, 'titlebar.html'));
+
+  // No fixed preload: the session preload is chosen per navigation (preloadFor),
+  // so back/forward between the site and local pages get the right script, once.
+  view = new WebContentsView({
+    webPreferences: {
       contextIsolation: true,
       nodeIntegration: false
+    }
+  });
+  view.setBackgroundColor('#0b0e14');
+  view.webContents.session.setPreloads([preloadFor('https://www.onetricks.gg')]);
+  view.webContents.on('did-start-navigation', (d) => {
+    if (d && d.isMainFrame === false) return;
+    const url = d && d.url;
+    if (url) view.webContents.session.setPreloads([preloadFor(url)]);
+  });
+  win.contentView.addChildView(view);
+  layoutView();
+  win.on('resize', layoutView);
+  win.on('maximize', () => { layoutView(); sendTitlebar(); });
+  win.on('unmaximize', () => { layoutView(); sendTitlebar(); });
+  win.webContents.on('did-finish-load', sendTitlebar);
+  ['did-navigate', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading'].forEach((ev) =>
+    view.webContents.on(ev, sendTitlebar));
+  win.on('closed', () => { view = null; });
+  // Shortcuts while the page has focus: Alt+←/→, F5, Ctrl+K (title bar search).
+  view.webContents.on('before-input-event', (e, input) => {
+    if (input.type !== 'keyDown') return;
+    const wc = view.webContents;
+    if (input.alt && input.key === 'ArrowLeft') { if (wc.canGoBack()) wc.goBack(); e.preventDefault(); }
+    else if (input.alt && input.key === 'ArrowRight') { if (wc.canGoForward()) wc.goForward(); e.preventDefault(); }
+    else if (input.key === 'F5') { wc.reload(); e.preventDefault(); }
+    else if ((input.control || input.meta) && String(input.key).toLowerCase() === 'k') {
+      e.preventDefault();
+      win.webContents.focus();
+      win.webContents.send('tb:focus-search');
     }
   });
 
@@ -236,18 +322,18 @@ async function createWindow() {
   });
 
   // Hide the Electron tag: some WAFs challenge non-standard UAs (error pages in-app while fetch works)
-  win.webContents.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36');
+  view.webContents.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36');
 
-  await initAdblock(win.webContents.session);
-  win.loadURL('https://www.onetricks.gg').catch(e => {
+  await initAdblock(view.webContents.session);
+  view.webContents.loadURL('https://www.onetricks.gg').catch(e => {
     console.error('[otp] Failed to load onetricks.gg:', e);
   });
 
-  win.webContents.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL) => {
+  view.webContents.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL) => {
     console.warn(`[otp] did-fail-load: ${errorCode} (${errorDescription}) for ${validatedURL}`);
   });
 
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  view.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://www.onetricks.gg')) return { action: 'allow' };
     shell.openExternal(url);
     return { action: 'deny' };
@@ -475,9 +561,47 @@ app.whenReady().then(async () => {
   });
   ipcMain.on('otp:win-close', () => { if (win && !win.isDestroyed()) win.close(); });
   ipcMain.handle('otp:win-is-max', () => (win && !win.isDestroyed()) ? win.isMaximized() : false);
-  ipcMain.on('otp:nav-back', () => { if (win && !win.isDestroyed() && win.webContents.canGoBack()) win.webContents.goBack(); });
-  ipcMain.on('otp:nav-forward', () => { if (win && !win.isDestroyed() && win.webContents.canGoForward()) win.webContents.goForward(); });
-  ipcMain.on('otp:nav-reload', () => { if (win && !win.isDestroyed()) win.webContents.reload(); });
+  ipcMain.on('otp:nav-back', () => { if (win && !win.isDestroyed() && view.webContents.canGoBack()) view.webContents.goBack(); });
+  ipcMain.on('otp:nav-forward', () => { if (win && !win.isDestroyed() && view.webContents.canGoForward()) view.webContents.goForward(); });
+  ipcMain.on('otp:nav-reload', () => { if (win && !win.isDestroyed()) view.webContents.reload(); });
+
+  // ---- Title bar ----
+  ipcMain.on('tb:ready', () => sendTitlebar());
+  ipcMain.on('tb:go', (_e, where) => {
+    if (!win || win.isDestroyed() || !view) return;
+    const wc = view.webContents;
+    if (where === 'back') { if (wc.canGoBack()) wc.goBack(); }
+    else if (where === 'forward') { if (wc.canGoForward()) wc.goForward(); }
+    else if (where === 'reload') wc.reload();
+    else if (where === 'home') wc.loadURL('https://www.onetricks.gg');
+    else if (where === 'tier') wc.loadFile(path.join(__dirname, 'tierlist.html'));
+    else if (where === 'summoner') wc.loadFile(path.join(__dirname, 'summoner.html'));
+    else if (typeof where === 'object' && where?.champ) {
+      wc.loadURL(`https://www.onetricks.gg/champions/builds/${encodeURIComponent(where.champ)}`);
+    }
+  });
+  ipcMain.handle('tb:champs', async () => {
+    try {
+      const base = await ddBase();
+      const j = await (await fetch(`${base}/data/en_US/champion.json`)).json();
+      return Object.values(j.data).map((c) => ({ id: c.id, name: c.name, icon: `${base}/img/champion/${c.id}.png` }));
+    } catch { return []; }
+  });
+  // League client state for the title bar pill (every 2 s, cheap LCU calls only).
+  setInterval(async () => {
+    let next = { state: 'off' };
+    try {
+      const { request } = require('league-connect');
+      const creds = await lcu.getCreds();
+      const ph = await request({ method: 'GET', url: '/lol-gameflow/v1/gameflow-phase' }, creds);
+      const phase = ph.status === 200 ? await ph.json() : 'None';
+      next = { state: 'on', phase };
+      if (phase === 'ChampSelect' && lastSentChamp) {
+        next.champ = await champIdToName(lastSentChamp).catch(() => null);
+      }
+    } catch {}
+    if (JSON.stringify(next) !== JSON.stringify(tbLcu)) { tbLcu = next; sendTitlebar(); }
+  }, 2000);
 
   ipcMain.on('otp:settings', (_e, s) => {
     Object.assign(flags, s || {});
@@ -487,24 +611,24 @@ app.whenReady().then(async () => {
   });
   ipcMain.on('otp:open-tier', () => {
     if (!win || win.isDestroyed()) return;
-    win.webContents.session.setPreloads([path.join(__dirname, 'tier-preload.js')]);
-    win.loadFile(path.join(__dirname, 'tierlist.html'));
+    view.webContents.session.setPreloads([path.join(__dirname, 'tier-preload.js')]);
+    view.webContents.loadFile(path.join(__dirname, 'tierlist.html'));
   });
   ipcMain.on('otp:open-summoner', () => {
     if (!win || win.isDestroyed()) return;
-    win.webContents.session.setPreloads([path.join(__dirname, 'summoner-preload.js')]);
-    win.loadFile(path.join(__dirname, 'summoner.html'));
+    view.webContents.session.setPreloads([path.join(__dirname, 'summoner-preload.js')]);
+    view.webContents.loadFile(path.join(__dirname, 'summoner.html'));
   });
   ipcMain.on('otp:go-home', () => {
     if (!win || win.isDestroyed()) return;
-    win.webContents.session.setPreloads([path.join(__dirname, 'preload.js')]);
-    win.loadURL('https://www.onetricks.gg');
+    view.webContents.session.setPreloads([path.join(__dirname, 'preload.js')]);
+    view.webContents.loadURL('https://www.onetricks.gg');
   });
   ipcMain.handle('otp:open-build', async (_e, slug) => {
     try {
       if (win && !win.isDestroyed()) {
-        win.webContents.session.setPreloads([path.join(__dirname, 'preload.js')]);
-        await win.loadURL(`https://www.onetricks.gg/champions/builds/${encodeURIComponent(slug)}`);
+        view.webContents.session.setPreloads([path.join(__dirname, 'preload.js')]);
+        await view.webContents.loadURL(`https://www.onetricks.gg/champions/builds/${encodeURIComponent(slug)}`);
         if (win.isMinimized()) win.restore();
         win.focus();
       }
@@ -641,7 +765,29 @@ app.whenReady().then(async () => {
   // curl gibi davran: tüm IP'leri çöz, kısa timeout'la tek tek dene.
   const dnsP = require('dns').promises;
   const httpsMod = require('https');
+  // One pooled keep-alive agent: every deeplol call used to open a fresh TLS
+  // connection (~150-700 ms each). Reuse sockets instead.
+  const dlAgent = new httpsMod.Agent({ keepAlive: true, maxSockets: 8, keepAliveMsecs: 30000 });
   function dlFetchText(url, timeoutMs = 4000) {
+    const fast = new Promise((resolve, reject) => {
+      const req = httpsMod.request(url, { headers: DL_H, agent: dlAgent, timeout: Math.min(timeoutMs, 3500) }, (res) => {
+        if (res.statusCode !== 200) { res.resume(); reject(new Error('deeplol HTTP ' + res.statusCode)); return; }
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (c) => (data += c));
+        res.on('end', () => resolve(data));
+      });
+      req.on('timeout', () => req.destroy(new Error('timeout')));
+      req.on('error', reject);
+      req.end();
+    });
+    return fast.catch((e) => {
+      if (/HTTP 4\d\d/.test(String(e?.message))) throw e;
+      return dlFetchTextSlow(url, timeoutMs);
+    });
+  }
+  // Fallback: some edge IPs hang, so resolve all of them and try each with a short timeout.
+  function dlFetchTextSlow(url, timeoutMs = 4000) {
     const u = new URL(url);
     const standardFetch = () => new Promise((resolve, reject) => {
       const req = httpsMod.request(url, { headers: DL_H, timeout: timeoutMs }, (res) => {
@@ -705,8 +851,22 @@ app.whenReady().then(async () => {
         }
         throw new Error(`${step}: ${lastErr?.message ?? lastErr}`);
       };
+      const matchesUrl = (puu) => `${DL}/match/matches?puu_id=${encodeURIComponent(puu)}&platform_id=${platform}&offset=0&count=30&queue_type=ALL&champion_id=-1&only_list=1&last_updated_at=1`;
       const listP = get(`${DL}/summoner/list?platform_id=${platform}&riot_id_name=${encodeURIComponent(gameName)}`, 'search');
       const profP = get(`${DL}/summoner/summoner?riot_id_name=${encodeURIComponent(gameName)}&riot_id_tag_line=${encodeURIComponent(tagLine)}&platform_id=${platform}`, 'profile');
+      // Don't wait for the account list: once the profile has a puuid, start the
+      // match list right away (and warm the first match details) in parallel.
+      let earlyMl = null;
+      if (!q?.fresh) {
+        earlyMl = profP.then((p) => {
+          const puu = p?.summoner_basic_info_dict?.puu_id;
+          if (!puu) return null;
+          return get(matchesUrl(puu), 'matches').then((ml) => {
+            dlPrefetch(puu, platform, ml);
+            return { puu, ml };
+          });
+        }).catch(() => null);
+      }
       const [list, profDirect] = await Promise.all([listP.catch((e) => ({ _err: e })), profP.catch((e) => ({ _err: e }))]);
       if (list._err) throw list._err;
       const entry = ((list || {}).lists || []).find((e) => String(e.riot_id_tag_line || '').toLowerCase() === tagLine.toLowerCase());
@@ -725,8 +885,11 @@ app.whenReady().then(async () => {
           await dlPostJson('https://renew.deeplol.gg/match/refresh-matches', { puu_id: puu, platform_id: platform, queue_type: 'ALL', start_idx: 0, count: 30 }, 25000);
         } catch {}
       }
-      const base = await ddBase();
-      const ml = await get(`${DL}/match/matches?puu_id=${encodeURIComponent(puu)}&platform_id=${platform}&offset=0&count=30&queue_type=ALL&champion_id=-1&only_list=1&last_updated_at=1`, 'matches');
+      const basP = ddBase();
+      const early = earlyMl ? await earlyMl : null;
+      const ml = (early && early.puu === puu) ? early.ml : await get(matchesUrl(puu), 'matches');
+      if (!early || early.puu !== puu) dlPrefetch(puu, platform, ml);
+      const base = await basP;
       const pendingIds = ((ml || {}).match_id_list || []).slice(0, 30).map((x) => ({ id: x.match_id, ts: x.match_creation_time }));
       const parts = String(entry.tier || '').split(' ');
       return {
@@ -759,9 +922,36 @@ app.whenReady().then(async () => {
     });
   }
   const dlMatchCache = new Map();
-  async function dlMatchDetail(matchId, platform, puu, base) {
+  // In-flight detail requests, keyed by match+player, so the prefetch started during
+  // the profile lookup and the renderer's request share one network call.
+  const dlInflight = new Map();
+  function dlPrefetch(puu, platform, ml) {
+    const ids = ((ml || {}).match_id_list || []).slice(0, 10).map((x) => x.match_id);
+    if (!ids.length) return;
+    ddBase().then((base) => runPool(ids, 6, (id) => dlMatchDetail(id, platform, puu, base))).catch(() => {});
+  }
+  async function runPool(items, limit, fn) {
+    const out = new Array(items.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < items.length) {
+        const i = next++;
+        try { out[i] = await fn(items[i], i); } catch (e) { out[i] = { err: String(e?.message ?? e) }; }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+    return out;
+  }
+  function dlMatchDetail(matchId, platform, puu, base) {
     const hit = dlMatchCache.get(matchId);
-    if (hit && Date.now() - hit.ts < 10 * 60 * 1000) return { m: hit.m };
+    if (hit && hit.puu === puu && Date.now() - hit.ts < 10 * 60 * 1000) return Promise.resolve({ m: hit.m });
+    const key = matchId + '|' + puu;
+    if (dlInflight.has(key)) return dlInflight.get(key);
+    const p = dlMatchDetailFetch(matchId, platform, puu, base).finally(() => dlInflight.delete(key));
+    dlInflight.set(key, p);
+    return p;
+  }
+  async function dlMatchDetailFetch(matchId, platform, puu, base) {
     let lastErr = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -836,7 +1026,7 @@ app.whenReady().then(async () => {
           teamDiff,
           teams
         };
-        dlMatchCache.set(matchId, { ts: Date.now(), m });
+        dlMatchCache.set(matchId, { ts: Date.now(), m, puu });
         return { m };
       } catch (e) {
         lastErr = e;
@@ -853,14 +1043,13 @@ app.whenReady().then(async () => {
       if (!puu || !ids.length) return { ok: true, matches: [], failed: [] };
       const base = await ddBase();
       const matches = [], failed = [];
-      // max 4 concurrent — deeplol rate-limits bursts
-      for (let s = 0; s < ids.length; s += 4) {
-        const rs = await Promise.all(ids.slice(s, s + 4).map((id) => dlMatchDetail(id, platform, puu, base)));
-        rs.forEach((r, k) => {
-          if (r?.m) matches.push(r.m);
-          else failed.push({ id: ids[s + k], reason: r?.err || 'unknown' });
-        });
-      }
+      // Pool of 6 (no batch barrier: a slow match no longer holds up the next ones).
+      // Usually already in flight or cached from the prefetch in otp:deeplol.
+      const rs = await runPool(ids, 6, (id) => dlMatchDetail(id, platform, puu, base));
+      rs.forEach((r, k) => {
+        if (r?.m) matches.push(r.m);
+        else failed.push({ id: ids[k], reason: r?.err || 'unknown' });
+      });
       if (failed.length) {
         const reasons = {};
         failed.forEach((f) => { reasons[f.reason] = (reasons[f.reason] || 0) + 1; });
