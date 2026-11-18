@@ -778,7 +778,25 @@ if (!window._otpCloser) {
   });
 }
 
+// Tint and size the native min/max/close buttons to the site header
+// (home header #141415, inner pages #212324).
+function syncCaption() {
+  const h = document.querySelector('header');
+  if (!h) return;
+  let el = h, bg = 'rgba(0, 0, 0, 0)';
+  while (el && /rgba\(0, 0, 0, 0\)|transparent/.test(bg)) { bg = getComputedStyle(el).backgroundColor; el = el.parentElement; }
+  const m = bg.match(/\d+/g);
+  if (!m) return;
+  const hex = '#' + m.slice(0, 3).map((n) => Number(n).toString(16).padStart(2, '0')).join('');
+  // Inner pages' <header> has no box of its own (height 0); its <ul> is the bar.
+  const height = Math.round(Math.max(h.getBoundingClientRect().height,
+    h.firstElementChild ? h.firstElementChild.getBoundingClientRect().height : 0)) || 40;
+  try { ipcRenderer.send('otp:caption', { color: hex, height }); } catch {}
+}
+window.addEventListener('resize', () => { clearTimeout(window._otpCapT); window._otpCapT = setTimeout(syncCaption, 150); });
+
 function mountUI() {
+  syncCaption();
   injectStyles();
   removeGetProButton();
   injectHeaderActions();

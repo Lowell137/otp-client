@@ -219,7 +219,7 @@ function startLcuLoops() {
 // Frameless window: the page's own header is the title bar (drag region injected
 // by the preloads), Windows keeps native min/max/close via titleBarOverlay, tinted
 // to match the onetricks header so the app reads as one surface.
-const CAPTION = { color: '#141415', symbolColor: '#e8e6e3', height: 40 };
+const CAPTION = { color: '#141415', symbolColor: '#e8e6e3', height: 66 };
 let view = null; // { webContents } alias kept so older call sites read the same
 function pageKind(url) {
   const u = String(url || '');
@@ -539,6 +539,25 @@ app.whenReady().then(async () => {
       const j = await (await fetch(`${base}/data/en_US/champion/${id}.json`)).json();
       return (j.data[id].skins || []).map((s) => ({ num: s.num, name: s.num === 0 ? 'Default' : s.name }));
     } catch { return []; }
+  });
+
+  // Native caption buttons follow the page header: same color (home #141415,
+  // inner pages #212324) and same height so they sit on the nav row.
+  let lastCaption = '';
+  ipcMain.on('otp:caption', (_e, c) => {
+    if (!win || win.isDestroyed() || !c) return;
+    const color = /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : CAPTION.color;
+    const height = Math.max(32, Math.min(72, Math.round(Number(c.height) || CAPTION.height)));
+    const key = color + height;
+    if (key === lastCaption) return;
+    lastCaption = key;
+    try { win.setTitleBarOverlay({ color, symbolColor: CAPTION.symbolColor, height }); } catch {}
+  });
+  // Champion search in the local pages' header -> onetricks build page.
+  ipcMain.on('otp:open-champ', (_e, name) => {
+    if (!win || win.isDestroyed()) return;
+    const slug = String(name || '').replace(/[^A-Za-z]/g, '');
+    if (slug) win.webContents.loadURL(`https://www.onetricks.gg/champions/builds/${encodeURIComponent(slug)}`);
   });
 
   // Local pages' header nav (same items as the onetricks header).
