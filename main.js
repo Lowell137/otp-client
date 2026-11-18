@@ -325,14 +325,60 @@ async function createWindow() {
 }
 
 // ---- OVERLAY WINDOW (auto-shown while a live game is detected) ----
+// The overlay only appears while the League game window is in front, sized to that
+// window (so it follows the game across monitors). Its window region is cut down
+// to the panel (setShape): the panel always takes clicks, everything else is
+// outside the window and goes straight to the game.
+let leagueFg = null; // lazily created foreground-window probe (koffi -> user32/kernel32)
+function leagueProbe() {
+  if (leagueFg !== null) return leagueFg;
+  try {
+    const koffi = require('koffi');
+    const u = koffi.load('user32.dll');
+    const k = koffi.load('kernel32.dll');
+    const RECT = koffi.struct('OTP_RECT', { left: 'int32', top: 'int32', right: 'int32', bottom: 'int32' });
+    const GetForegroundWindow = u.func('void* __stdcall GetForegroundWindow()');
+    const GetWindowThreadProcessId = u.func('uint32 __stdcall GetWindowThreadProcessId(void* h, _Out_ uint32* pid)');
+    const GetWindowRect = u.func('bool __stdcall GetWindowRect(void* h, _Out_ OTP_RECT* r)');
+    const IsIconic = u.func('bool __stdcall IsIconic(void* h)');
+    const OpenProcess = k.func('void* __stdcall OpenProcess(uint32 access, bool inherit, uint32 pid)');
+    const QueryName = k.func('bool __stdcall QueryFullProcessImageNameW(void* h, uint32 flags, _Out_ uint16* buf, _Inout_ uint32* size)');
+    const CloseHandle = k.func('bool __stdcall CloseHandle(void* h)');
+    const names = new Map(); // pid -> exe basename
+    leagueFg = () => {
+      const h = GetForegroundWindow();
+      if (!h || IsIconic(h)) return null;
+      const pid = [0];
+      GetWindowThreadProcessId(h, pid);
+      let name = names.get(pid[0]);
+      if (name === undefined) {
+        name = '';
+        const ph = OpenProcess(0x1000, false, pid[0]); // PROCESS_QUERY_LIMITED_INFORMATION
+        if (ph) {
+          const buf = new Uint16Array(520), size = [520];
+          if (QueryName(ph, 0, buf, size)) name = String.fromCharCode(...buf.slice(0, size[0])).split(/[\\/]/).pop();
+          CloseHandle(ph);
+        }
+        names.set(pid[0], name);
+      }
+      if (name.toLowerCase() !== 'league of legends.exe') return null;
+      const r = {};
+      if (!GetWindowRect(h, r)) return null;
+      return { x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top };
+    };
+  } catch (e) {
+    console.warn('[otp] foreground probe unavailable, overlay follows the primary display:', e?.message || e);
+    leagueFg = () => ({ fallback: true });
+  }
+  return leagueFg;
+}
+
 function createOverlayWindow() {
   if (overlayWin && !overlayWin.isDestroyed()) return overlayWin;
-  const primary = screen.getPrimaryDisplay();
-  const { width, height } = primary.bounds;
-
+  const { width, height } = screen.getPrimaryDisplay().bounds;
   overlayWin = new BrowserWindow({
-    x: 0, y: 0,
-    width, height,
+    x: 0, y: 0, width, height,
+    show: false,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -351,20 +397,26 @@ function createOverlayWindow() {
       partition: 'persist:otp-overlay'
     }
   });
-  overlayWin.setIgnoreMouseEvents(true, { forward: true });
-  overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  overlayWin.setShape([]);
   overlayWin.webContents.on('console-message', (_e, _lvl, msg) => console.log('[otp] ov-console:', msg));
   overlayWin.loadFile(path.join(__dirname, 'overlay.html'));
   overlayWin.on('closed', () => { overlayWin = null; });
   return overlayWin;
 }
 
+// Called by the live loop while a game is running and the overlay is enabled.
+let overlayBoundsKey = '';
 function showOverlay() {
   const ow = createOverlayWindow();
-  if (ow.isMinimized()) ow.restore();
+  const game = leagueProbe()();
+  if (!game) { if (ow.isVisible()) ow.hide(); return; } // League not in front: hide
+  if (!game.fallback) {
+    const dip = screen.screenToDipRect(null, game);
+    const key = [dip.x, dip.y, dip.width, dip.height].map(Math.round).join(',');
+    if (key !== overlayBoundsKey) { overlayBoundsKey = key; ow.setBounds({ x: Math.round(dip.x), y: Math.round(dip.y), width: Math.round(dip.width), height: Math.round(dip.height) }); }
+  }
   ow.setAlwaysOnTop(true, 'screen-saver');
-  if (!ow.isVisible()) ow.show();
-  ow.setIgnoreMouseEvents(true, { forward: true });
+  if (!ow.isVisible()) ow.showInactive();
 }
 
 function hideOverlay() {
@@ -514,14 +566,22 @@ async function liveTick() {
 function startLiveClientLoop() {
   liveTick();
   setInterval(liveTick, 3000);
+  // Follow the game window quickly (alt-tab, move, resize) between the 3 s data polls.
+  setInterval(() => {
+    if (!liveInGame || (!flags.overlay && process.env.OTP_OVERLAY_DEMO !== '1')) return;
+    try { showOverlay(); } catch {}
+  }, 300);
 }
 
 function registerOverlayIpc() {
   ipcMain.on('otp:overlay-close', () => { hideOverlay(); });
-  ipcMain.on('otp:overlay-clickthrough', (_e, enabled) => {
-    if (overlayWin && !overlayWin.isDestroyed()) {
-      overlayWin.setIgnoreMouseEvents(enabled, { forward: true });
-    }
+  // The overlay page reports the panel rectangle; the window region is cut to it.
+  ipcMain.on('otp:overlay-shape', (_e, rects) => {
+    if (!overlayWin || overlayWin.isDestroyed() || !Array.isArray(rects)) return;
+    const clean = rects
+      .map((r) => ({ x: Math.max(0, Math.floor(r.x)), y: Math.max(0, Math.floor(r.y)), width: Math.ceil(r.width), height: Math.ceil(r.height) }))
+      .filter((r) => r.width > 0 && r.height > 0);
+    try { overlayWin.setShape(clean); } catch {}
   });
 }
 

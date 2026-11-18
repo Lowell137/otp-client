@@ -13,7 +13,7 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; }
 
   /* Enemy summoner spell timers. No ultimate timers: Riot bans those in third-party apps. */
-  #panel { position: absolute; top: 120px; right: 16px; width: 168px; background: var(--fg); border: 1px solid var(--border);
+  #panel { position: absolute; top: 120px; right: 16px; width: 186px; background: var(--fg); border: 1px solid var(--border);
     border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .5); overflow: hidden;
     -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
   #panel.hidden { display: none; }
@@ -30,17 +30,17 @@
   #rows { padding: 4px 6px 6px; }
   .row { display: flex; align-items: center; gap: 6px; padding: 3px 2px; }
   .row + .row { border-top: 1px solid rgba(255, 255, 255, .04); }
-  .champ { width: 30px; height: 30px; border-radius: 7px; overflow: hidden; flex: none; background: #111; }
+  .champ { width: 34px; height: 34px; border-radius: 7px; overflow: hidden; flex: none; background: #111; }
   .champ img { width: 100%; height: 100%; display: block; transform: scale(1.08); }
   .spells { display: flex; gap: 4px; margin-left: auto; }
 
-  .sp { position: relative; width: 30px; height: 30px; border-radius: 7px; overflow: hidden; cursor: pointer; flex: none;
+  .sp { position: relative; width: 36px; height: 36px; border-radius: 7px; overflow: hidden; cursor: pointer; flex: none;
     background: #111; outline: 1px solid rgba(255, 255, 255, .08); outline-offset: -1px; }
   .sp img { width: 100%; height: 100%; display: block; }
   .sp:hover { outline-color: rgba(16, 99, 183, .9); }
   .sp .ring { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
     background: conic-gradient(rgba(0, 0, 0, .78) calc(var(--p, 1) * 360deg), rgba(0, 0, 0, .35) 0); }
-  .sp .ring span { font-size: 11px; font-weight: 800; color: #fff; text-shadow: 0 0 4px #000; font-variant-numeric: tabular-nums; }
+  .sp .ring span { font-size: 12px; font-weight: 800; color: #fff; text-shadow: 0 0 4px #000; font-variant-numeric: tabular-nums; }
   .sp.cd .ring { display: flex; }
   .sp.cd img { filter: grayscale(.85) brightness(.75); }
   .sp.ready { animation: ready 1.2s ease-out 1; }
@@ -93,6 +93,7 @@
   });
   head.addEventListener('pointermove', (e) => {
     if (!drag) return;
+    // (shape follows via the style MutationObserver)
     const x = Math.max(0, Math.min(innerWidth - panel.offsetWidth, e.clientX - drag.dx));
     const y = Math.max(0, Math.min(innerHeight - 40, e.clientY - drag.dy));
     panel.style.left = x + 'px'; panel.style.top = y + 'px'; panel.style.right = 'auto';
@@ -154,11 +155,30 @@
     paint();
   }
 
-  // Click-through except over the panel.
-  let over = false;
-  const setOver = (on) => { if (on !== over) { over = on; try { API.setClickThrough(!on); } catch {} } };
-  document.addEventListener('mousemove', (e) => setOver(!!(e.target && e.target.closest && e.target.closest('#panel')) || !!drag));
-  document.addEventListener('mouseleave', () => { if (!drag) setOver(false); });
+  // The window region is cut to the panel (main: setShape), so the panel always
+  // takes clicks and everything around it goes to the game. Report its rect.
+  let lastShape = '';
+  function reportShape() {
+    let rects = [];
+    if (!panel.classList.contains('hidden')) {
+      const r = panel.getBoundingClientRect();
+      rects = [{ x: r.left - 1, y: r.top - 1, width: r.width + 2, height: r.height + 2 }];
+    }
+    const k = JSON.stringify(rects.map((r) => [r.x, r.y, r.width, r.height].map(Math.round)));
+    if (k === lastShape) return;
+    lastShape = k;
+    try { API.setShape(rects); } catch {}
+  }
+  new ResizeObserver(reportShape).observe(panel);
+  new MutationObserver(reportShape).observe(panel, { attributes: true, attributeFilter: ['class', 'style'] });
+  window.addEventListener('resize', () => { clampIntoView(); reportShape(); });
+  // Keep the saved position inside the game window if its size changed.
+  function clampIntoView() {
+    if (panel.style.left === '') return;
+    const x = Math.max(0, Math.min(innerWidth - panel.offsetWidth, parseFloat(panel.style.left) || 0));
+    const y = Math.max(0, Math.min(innerHeight - 40, parseFloat(panel.style.top) || 0));
+    panel.style.left = x + 'px'; panel.style.top = y + 'px';
+  }
 
   API.onPlayersUpdate(render);
 })();
