@@ -30,6 +30,8 @@
       "wallpapers.html",
       "wallpapers-preload.js",
       "bg.js",
+      "changelog.json",
+      "whatsnew.js",
       "package.json",
       "assets/"
     ],

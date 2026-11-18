@@ -561,9 +561,59 @@ function setupAutoUpdate() {
   setInterval(check, 4 * 60 * 60 * 1000);
 }
 
+// ---- "What's new" after an update ----
+// userData/otp-state.json keeps the last version the user opened. When the running
+// version differs, show changelog.json entries newer than that (just the current
+// one on a first run) in a small modal window. OTP_WHATSNEW=1 forces it for testing.
+const fsMod = require('fs');
+const statePath = () => path.join(app.getPath('userData'), 'otp-state.json');
+function readState() { try { return JSON.parse(fsMod.readFileSync(statePath(), 'utf8')); } catch { return {}; } }
+function writeState(s) { try { fsMod.writeFileSync(statePath(), JSON.stringify(s, null, 2)); } catch {} }
+function cmpVer(a, b) {
+  const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d; }
+  return 0;
+}
+// Shown inside the page (whatsnew.js). The version is only marked as seen once the
+// user dismisses it; if the page navigates first, it is shown again on the next load.
+let whatsNewPending = null;
+function computeWhatsNew() {
+  const current = app.getVersion();
+  const last = readState().lastVersion || null;
+  const force = process.env.OTP_WHATSNEW === '1';
+  if (last === current && !force) return null;
+  let log = [];
+  try { log = JSON.parse(fsMod.readFileSync(path.join(__dirname, 'changelog.json'), 'utf8')); } catch {}
+  let entries = log
+    .filter((e) => cmpVer(e.version, current) <= 0 && (!last || force || cmpVer(e.version, last) > 0))
+    .sort((a, b) => cmpVer(b.version, a.version));
+  if (!last || force) entries = entries.filter((e) => e.version === current);
+  if (!entries.length) { writeState({ ...readState(), lastVersion: current }); return null; }
+  return { version: current, entries };
+}
+let whatsNewShowing = false;
+function showWhatsNew() {
+  if (!whatsNewPending || whatsNewShowing || !win || win.isDestroyed()) return;
+  whatsNewShowing = true;
+  const { overlayScript } = require('./whatsnew.js');
+  win.webContents.executeJavaScript(overlayScript(whatsNewPending), true)
+    .then((done) => {
+      if (done) {
+        writeState({ ...readState(), lastVersion: whatsNewPending.version });
+        whatsNewPending = null;
+      }
+    })
+    .catch(() => {})
+    .finally(() => { whatsNewShowing = false; });
+}
+
 app.whenReady().then(async () => {
   await createWindow();
   setupAutoUpdate();
+  whatsNewPending = computeWhatsNew();
+  // Navigating away drops the pop-up (and its pending promise); show it again on the next page.
+  win.webContents.on('did-start-navigation', (d) => { if (!d || d.isMainFrame !== false) whatsNewShowing = false; });
+  win.webContents.on('did-finish-load', () => setTimeout(showWhatsNew, 1200));
   const lcu = require('./lcu.js');
   lcu.registerIpc(ipcMain);
   registerOverlayIpc();

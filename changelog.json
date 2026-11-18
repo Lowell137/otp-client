@@ -1,0 +1,16 @@
+[
+  {
+    "version": "0.1.7",
+    "date": "2026-11-18",
+    "items": [
+      ["Auto update", "New versions download in the background and ask to restart."],
+      ["Current patch builds", "Imports use the newest patch instead of the whole-season average."],
+      ["Full tier list", "Every champion, the live patch, D+/D- tiers and the real game count."],
+      ["Wallpapers", "Pick the splash arts you like; blur and darkness are adjustable."],
+      ["Native window", "The onetricks header is the title bar and stays on top while scrolling."],
+      ["Faster summoner lookup", "Profiles and matches load in parallel."],
+      ["Tidy rune pages", "Only one OTP rune page is kept; old ones are removed."],
+      ["Fewer ads", "Ad and tracking requests are blocked."]
+    ]
+  }
+]
