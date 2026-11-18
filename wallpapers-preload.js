@@ -15,17 +15,17 @@ document.addEventListener('click', (e) => {
 
 // Shared header: champion search -> build page; native caption buttons take the
 // header's color/height (#212324, 56 px) like on the site's inner pages.
-document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter' || !e.target || e.target.id !== 'otp-shell-search') return;
-  const v = e.target.value.trim();
-  if (v) ipcRenderer.send('otp:open-champ', v);
-});
-document.addEventListener('change', (e) => {
-  if (!e.target || e.target.id !== 'otp-shell-search') return;
-  const v = e.target.value.trim();
-  const opts = [...document.querySelectorAll('#otp-shell-champs option')].map((o) => o.value);
-  if (opts.includes(v)) ipcRenderer.send('otp:open-champ', v);
+// shell.js fires 'otp-open-champ' with the champion name when a suggestion is picked.
+document.addEventListener('otp-open-champ', (e) => {
+  const id = e && e.detail;
+  if (typeof id === 'string' && id) ipcRenderer.send('otp:open-champ', id);
 });
 window.addEventListener('DOMContentLoaded', () => {
-  try { ipcRenderer.send('otp:caption', { color: '#212324', height: 56 }); } catch {}
+  try { ipcRenderer.send('otp:caption', { color: '#00000000', height: 56 }); } catch {}
+});
+
+// shell.js header drag (no CSS drag region on local pages): forward to main.
+document.addEventListener('otp-win-drag', (e) => {
+  const phase = e && e.detail;
+  if (typeof phase === 'string') ipcRenderer.send('otp:win-drag', phase);
 });

@@ -13,10 +13,16 @@ const OVERLAY_DISABLED = true;
 
 function initAdblock(sess) {
   // Block common tracking and advertising hosts at the network request level
-  const AD = /googletagmanager|googlesyndication|googletagservices|doubleclick|clarity\.ms|vntsm\.com|venatus|adnuntius|browsiprod|pubmine|adpushup|nitropay|connatix|playwire|smilewanted|csync|adservice|criteo|outbrain|taboola|popads|adnxs|rubicon|pubmatic|amazon-adsystem|hotjar|fullstory|segment|mixpanel|amplitude|scorecardresearch|quantserve|crwdcntrl|demdex|mathtag/i;
+  // Hosts seen loading on onetricks.gg (2026-11-18): ad exchanges, header bidding,
+  // ad-recovery / anti-adblock loaders (html-load.cc, btloader, ad-delivery, dns-finder),
+  // the Intergi/Playwire wrapper, consent banners for ads, and ID-sync trackers.
+  const AD = /googletagmanager|googlesyndication|googletagservices|doubleclick|adtrafficquality|fundingchoicesmessages|imasdk\.googleapis|clarity\.ms|vntsm\.com|venatus|adnuntius|browsiprod|pubmine|adpushup|nitropay|connatix|playwire|smilewanted|csync|adservice|criteo|outbrain|taboola|popads|adnxs|rubicon|pubmatic|amazon-adsystem|hotjar|fullstory|segment|mixpanel|amplitude|scorecardresearch|quantserve|crwdcntrl|demdex|mathtag|html-load\.cc|btloader\.com|ad-delivery\.net|dns-finder\.com|intergient\.com|intergi\.com|durationmedia|ccgateway\.net|adsrvr\.org|3lift\.com|smartadserver|casalemedia|indexww|liadm\.com|id5-sync|rlcdn\.com|hadronid|33across|seedtag|openx\.net|gumgum|richaudience|eyeota|dotomi|agkn\.com|fastclick\.net|privacymanager\.io|pubgw\.yahoo|analytics\.yahoo|carbonads|buysellads/i;
+  // The ad-recovery loader rotates its domain (html-load.cc, *.stg.cafe.vividtomato.com, ...)
+  // but keeps the URL shape: https://N.stg.<host>/session/xxx/xxx/xx/www.onetricks.gg/...
+  const AD_PATH = /^https:\/\/[^/]*\.stg\.[^/]+\/session\/|\/session\/[a-z0-9]{3}\/[a-z0-9]{3}\/[a-z0-9]{2,3}\/www\.onetricks\.gg\//i;
   try {
     sess.webRequest.onBeforeRequest((details, cb) => {
-      cb({ cancel: AD.test(details.url) });
+      cb({ cancel: AD.test(details.url) || AD_PATH.test(details.url) });
     });
     console.log('[otp] adblock enabled');
   } catch (e) {
@@ -230,6 +236,29 @@ function pageKind(url) {
   if (/onetricks\.gg/i.test(u)) return 'home';
   return 'other';
 }
+// Electron 31 keeps the site's header drag regions after navigating to a local
+// file page and never applies the local page's own regions, so parts of our header
+// (search box, icons) acted as a window drag area. Before leaving the site, switch
+// its header to no-drag (leaving a 1 px drag anchor so a non-empty list is
+// reported) and wait two frames. No-op when not on the site.
+async function clearSiteDrag(wc) {
+  if (!wc || wc.isDestroyed() || !/^https?:/i.test(wc.getURL())) return;
+  try {
+    await Promise.race([
+      wc.executeJavaScript(`(() => {
+        const s = document.createElement('style'); s.id = 'otp-leave-nodrag';
+        s.textContent = 'header, header * { -webkit-app-region: no-drag !important; }';
+        document.head.appendChild(s);
+        const a = document.createElement('div'); a.id = 'otp-leave-anchor';
+        a.style.cssText = 'position:fixed;left:0;bottom:0;width:1px;height:1px;-webkit-app-region:drag;pointer-events:none';
+        document.body.appendChild(a);
+        return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 40))));
+      })()`, true),
+      new Promise((r) => setTimeout(r, 400)),
+    ]);
+  } catch {}
+}
+
 function preloadFor(url) {
   const k = pageKind(url);
   if (k === 'tier') return path.join(__dirname, 'tier-preload.js');
@@ -269,8 +298,9 @@ async function createWindow() {
   win.webContents.on('before-input-event', (e, input) => {
     if (input.type !== 'keyDown') return;
     const wc = win.webContents;
-    if (input.alt && input.key === 'ArrowLeft') { if (wc.canGoBack()) wc.goBack(); e.preventDefault(); }
-    else if (input.alt && input.key === 'ArrowRight') { if (wc.canGoForward()) wc.goForward(); e.preventDefault(); }
+    // History may land on a local page: clear the site's drag regions first (see clearSiteDrag).
+    if (input.alt && input.key === 'ArrowLeft') { e.preventDefault(); if (wc.canGoBack()) clearSiteDrag(wc).then(() => wc.goBack()); }
+    else if (input.alt && input.key === 'ArrowRight') { e.preventDefault(); if (wc.canGoForward()) clearSiteDrag(wc).then(() => wc.goForward()); }
     else if (input.key === 'F5') { wc.reload(); e.preventDefault(); }
   });
 
@@ -546,12 +576,36 @@ app.whenReady().then(async () => {
   let lastCaption = '';
   ipcMain.on('otp:caption', (_e, c) => {
     if (!win || win.isDestroyed() || !c) return;
-    const color = /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : CAPTION.color;
+    // #rrggbb, or #rrggbbaa (e.g. #00000000) so local pages can show the wallpaper behind the buttons.
+    const color = /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(c.color) ? c.color : CAPTION.color;
     const height = Math.max(32, Math.min(72, Math.round(Number(c.height) || CAPTION.height)));
     const key = color + height;
     if (key === lastCaption) return;
     lastCaption = key;
     try { win.setTitleBarOverlay({ color, symbolColor: CAPTION.symbolColor, height }); } catch {}
+  });
+  // Window moving for local pages (their header has no CSS drag region; see shell.css).
+  // Uses the real cursor position in DIPs, so scaling and multi-monitor stay right.
+  let drag = null;
+  ipcMain.on('otp:win-drag', (_e, phase) => {
+    if (!win || win.isDestroyed()) return;
+    const cur = screen.getCursorScreenPoint();
+    if (phase === 'max') { win.isMaximized() ? win.unmaximize() : win.maximize(); return; }
+    if (phase === 'start') {
+      if (win.isMaximized()) {
+        // Like a native title bar: restore under the cursor, keeping its relative x.
+        const [mw] = win.getSize();
+        const rel = Math.max(0, Math.min(1, (cur.x - win.getBounds().x) / mw));
+        win.unmaximize();
+        const [w] = win.getSize();
+        win.setPosition(Math.round(cur.x - rel * w), Math.round(cur.y - 20));
+      }
+      const [x, y] = win.getPosition();
+      drag = { dx: cur.x - x, dy: cur.y - y };
+      return;
+    }
+    if (phase === 'move' && drag) { win.setPosition(cur.x - drag.dx, cur.y - drag.dy); return; }
+    if (phase === 'end') drag = null;
   });
   // Champion search in the local pages' header -> onetricks build page.
   ipcMain.on('otp:open-champ', (_e, name) => {
@@ -561,14 +615,26 @@ app.whenReady().then(async () => {
   });
 
   // Local pages' header nav (same items as the onetricks header).
+  // Electron 31 keeps the site's header drag regions after navigating to a local
+  // file page and never applies the local page's own regions, so parts of our
+  // header (search box, icons) acted as a window drag area. Before leaving the
+  // site, switch its header to no-drag (leaving a 1 px drag anchor so a non-empty
+  // list is reported), wait two frames, then navigate.
+  async function loadLocal(file) {
+    if (!win || win.isDestroyed()) return;
+    await clearSiteDrag(win.webContents);
+    if (!win || win.isDestroyed()) return;
+    win.webContents.loadFile(path.join(__dirname, file));
+  }
+
   ipcMain.on('otp:go', (_e, where) => {
     if (!win || win.isDestroyed()) return;
     const wc = win.webContents;
     const site = { home: '', guides: '/guides', discover: '/discover' };
     if (where in site) wc.loadURL('https://www.onetricks.gg' + site[where]);
-    else if (where === 'tier') wc.loadFile(path.join(__dirname, 'tierlist.html'));
-    else if (where === 'summoner') wc.loadFile(path.join(__dirname, 'summoner.html'));
-    else if (where === 'wallpapers') wc.loadFile(path.join(__dirname, 'wallpapers.html'));
+    else if (where === 'tier') loadLocal('tierlist.html');
+    else if (where === 'summoner') loadLocal('summoner.html');
+    else if (where === 'wallpapers') loadLocal('wallpapers.html');
     else if (where === 'back') { if (wc.canGoBack()) wc.goBack(); }
   });
 
@@ -580,13 +646,11 @@ app.whenReady().then(async () => {
   });
   ipcMain.on('otp:open-tier', () => {
     if (!win || win.isDestroyed()) return;
-    view.webContents.session.setPreloads([path.join(__dirname, 'tier-preload.js')]);
-    view.webContents.loadFile(path.join(__dirname, 'tierlist.html'));
+    loadLocal('tierlist.html');
   });
   ipcMain.on('otp:open-summoner', () => {
     if (!win || win.isDestroyed()) return;
-    view.webContents.session.setPreloads([path.join(__dirname, 'summoner-preload.js')]);
-    view.webContents.loadFile(path.join(__dirname, 'summoner.html'));
+    loadLocal('summoner.html');
   });
   ipcMain.on('otp:go-home', () => {
     if (!win || win.isDestroyed()) return;

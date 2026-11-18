@@ -890,7 +890,7 @@ a[href*="discord"], .sidePanel{display:none !important}
 header{-webkit-app-region:drag;user-select:none}
 header a,header button,header input,header [role],header [type="button"],header svg,header img,header select,header .IconButton{-webkit-app-region:no-drag}
 header>ul{padding-right:142px !important;box-sizing:border-box}
-#ad-slot,[id="ad-slot"],.vm-placement,[class*="vm-placement"]{display:none !important;height:0 !important;min-height:0 !important;max-height:0 !important;margin:0 !important;padding:0 !important;opacity:0 !important;pointer-events:none !important;visibility:hidden !important;}
+#ad-slot,[id="ad-slot"],.vm-placement,[class*="vm-placement"],.ad-slot,.square-ad,.ad-md,.ad-lg,.ad-sidePanel,[class*="ad-leftSidePanel"],[class*="ad-rightSidePanel"],ins.adsbygoogle,iframe[src*="safeframe"],iframe[id^="google_ads"],[id^="div-gpt-ad"],[class*="pw-tag"],[id*="pw-oop"]{display:none !important;height:0 !important;min-height:0 !important;max-height:0 !important;margin:0 !important;padding:0 !important;opacity:0 !important;pointer-events:none !important;visibility:hidden !important;}
 `;
 
 function injectTierNav() {
@@ -1071,3 +1071,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // Periodically refresh LCU connection status
 setInterval(refreshLcuStatus, 5000);
+
+// main's clearSiteDrag() turns the header's drag region off right before leaving
+// for a local page; if this page comes back from the back/forward cache, undo it.
+window.addEventListener('pageshow', () => {
+  document.getElementById('otp-leave-nodrag')?.remove();
+  document.getElementById('otp-leave-anchor')?.remove();
+});
