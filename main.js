@@ -397,7 +397,10 @@ function createOverlayWindow() {
       partition: 'persist:otp-overlay'
     }
   });
-  overlayWin.setShape([]);
+  // Click-through by default; overlayHoverLoop turns input on only while the cursor is
+  // over the panel. (setShape did not cut input on this transparent window on Windows
+  // and the whole game became unclickable.)
+  overlayWin.setIgnoreMouseEvents(true);
   overlayWin.webContents.on('console-message', (_e, _lvl, msg) => console.log('[otp] ov-console:', msg));
   overlayWin.loadFile(path.join(__dirname, 'overlay.html'));
   overlayWin.on('closed', () => { overlayWin = null; });
@@ -408,7 +411,7 @@ function createOverlayWindow() {
 let overlayBoundsKey = '';
 function showOverlay() {
   const ow = createOverlayWindow();
-  const game = leagueProbe()();
+  const game = process.env.OTP_OVERLAY_ANYWHERE === '1' ? { fallback: true } : leagueProbe()(); // test flag: show over anything
   if (!game) { if (ow.isVisible()) ow.hide(); return; } // League not in front: hide
   if (!game.fallback) {
     const dip = screen.screenToDipRect(null, game);
@@ -465,6 +468,35 @@ const SPELL_FALLBACK = {
   'Clarity': ['SummonerMana', 240]
 };
 let sumSpellMap = null;
+
+// Current in-game spell art and cooldowns come from CommunityDragon (Data Dragon still
+// ships the old icons and some old cooldowns, e.g. Heal/Exhaust). Falls back to
+// summonerSpellInfo (Data Dragon) if CommunityDragon can't be reached.
+const CDRAGON = 'https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default';
+let cdSpellMap = null;
+async function spellInfoCurrent(displayName, ddragon) {
+  try {
+    if (!cdSpellMap) {
+      const j = await (await fetch(`${CDRAGON}/v1/summoner-spells.json`)).json();
+      const m = {};
+      for (const s of j || []) {
+        if (!(s.gameModes || []).includes('CLASSIC') || !s.iconPath) continue;
+        const url = CDRAGON + '/' + s.iconPath.replace(/^\/lol-game-data\/assets\//i, '').toLowerCase();
+        m[s.name] = { url, cd: Number(s.cooldown) || 180 };
+      }
+      if (Object.keys(m).length) cdSpellMap = m;
+    }
+    if (cdSpellMap) {
+      // Upgraded forms ("Unleashed Teleport", "Primal Smite") map to the base spell.
+      const names = Object.keys(cdSpellMap);
+      const base = names.find((n) => n === displayName) || names.find((n) => String(displayName || '').includes(n));
+      if (base) return cdSpellMap[base];
+    }
+  } catch {}
+  const old = await summonerSpellInfo(displayName, ddragon);
+  return { url: `${ddragon}/img/spell/${old.icon}.png`, cd: old.cd };
+}
+
 async function summonerSpellInfo(displayName, ddragon) {
   try {
     if (!sumSpellMap) {
@@ -496,7 +528,7 @@ async function buildOverlayPayload(data) {
     const haste = (p.items || []).reduce((h, it) => h + (SUMMONER_HASTE_ITEMS[it.itemID] || 0), 0);
     const s1 = p.summonerSpells?.summonerSpellOne?.displayName || 'Flash';
     const s2 = p.summonerSpells?.summonerSpellTwo?.displayName || 'Teleport';
-    const [i1, i2] = await Promise.all([summonerSpellInfo(s1, ddragon), summonerSpellInfo(s2, ddragon)]);
+    const [i1, i2] = await Promise.all([spellInfoCurrent(s1, ddragon), spellInfoCurrent(s2, ddragon)]);
     const cd = (base) => Math.round(base * 100 / (100 + haste));
     const champKey = String(p.rawChampionName || '').replace('game_character_displayname_', '') || p.championName.replace(/[^A-Za-z]/g, '');
     players.push({
@@ -504,8 +536,8 @@ async function buildOverlayPayload(data) {
       position: p.position || '', haste,
       icon: `${ddragon}/img/champion/${champKey}.png`,
       spells: [
-        { slot: 'D', name: s1, icon: `${ddragon}/img/spell/${i1.icon}.png`, cd: cd(i1.cd) },
-        { slot: 'F', name: s2, icon: `${ddragon}/img/spell/${i2.icon}.png`, cd: cd(i2.cd) },
+        { slot: 'D', name: s1, icon: i1.url, cd: cd(i1.cd) },
+        { slot: 'F', name: s2, icon: i2.url, cd: cd(i2.cd) },
       ],
     });
   }
@@ -575,15 +607,34 @@ function startLiveClientLoop() {
 
 function registerOverlayIpc() {
   ipcMain.on('otp:overlay-close', () => { hideOverlay(); });
-  // The overlay page reports the panel rectangle; the window region is cut to it.
+  // The overlay page reports the panel rectangle (page coordinates, DIP).
   ipcMain.on('otp:overlay-shape', (_e, rects) => {
-    if (!overlayWin || overlayWin.isDestroyed() || !Array.isArray(rects)) return;
-    const clean = rects
-      .map((r) => ({ x: Math.max(0, Math.floor(r.x)), y: Math.max(0, Math.floor(r.y)), width: Math.ceil(r.width), height: Math.ceil(r.height) }))
-      .filter((r) => r.width > 0 && r.height > 0);
-    try { overlayWin.setShape(clean); } catch {}
+    overlayPanelRects = Array.isArray(rects) ? rects.filter((r) => r && r.width > 0 && r.height > 0) : [];
   });
+  // While the overlay is visible: take mouse input only when the cursor is over the
+  // panel (checked every 50 ms from the real cursor position), otherwise ignore it so
+  // every click goes to the game.
+  setInterval(() => {
+    if (!overlayWin || overlayWin.isDestroyed() || !overlayWin.isVisible()) {
+      if (overlayTakesInput && overlayWin && !overlayWin.isDestroyed()) overlayWin.setIgnoreMouseEvents(true);
+      overlayTakesInput = false;
+      return;
+    }
+    const c = screen.getCursorScreenPoint();
+    const b = overlayWin.getBounds();
+    const x = c.x - b.x, y = c.y - b.y;
+    const inside = overlayPanelRects.some((r) => x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height);
+    if (inside !== overlayTakesInput || overlayDragging) {
+      if (overlayDragging && !inside) return; // keep input while dragging the panel
+      overlayTakesInput = inside;
+      overlayWin.setIgnoreMouseEvents(!inside);
+    }
+  }, 50);
+  ipcMain.on('otp:overlay-dragging', (_e, on) => { overlayDragging = !!on; });
 }
+let overlayPanelRects = [];
+let overlayTakesInput = false;
+let overlayDragging = false;
 
 // ---- Auto update (GitHub releases of Lowell137/otp-client via electron-updater) ----
 // Packaged builds only. Checks on start and every 4 hours, downloads in the

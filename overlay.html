@@ -89,6 +89,7 @@
     if (e.target.id === 'min') return;
     const r = panel.getBoundingClientRect();
     drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    try { API.setDragging(true); } catch {}
     head.setPointerCapture(e.pointerId);
   });
   head.addEventListener('pointermove', (e) => {
@@ -98,7 +99,7 @@
     const y = Math.max(0, Math.min(innerHeight - 40, e.clientY - drag.dy));
     panel.style.left = x + 'px'; panel.style.top = y + 'px'; panel.style.right = 'auto';
   });
-  head.addEventListener('pointerup', () => { if (drag) { drag = null; save(); } });
+  head.addEventListener('pointerup', () => { if (drag) { drag = null; save(); try { API.setDragging(false); } catch {} } });
 
   function paint() {
     const g = Math.max(0, Math.floor(now()));
@@ -155,8 +156,8 @@
     paint();
   }
 
-  // The window region is cut to the panel (main: setShape), so the panel always
-  // takes clicks and everything around it goes to the game. Report its rect.
+  // main takes mouse input only while the real cursor is over this rect (polled every
+  // 50 ms); everywhere else the window ignores the mouse and clicks go to the game.
   let lastShape = '';
   function reportShape() {
     let rects = [];
