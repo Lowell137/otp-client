@@ -203,12 +203,13 @@ async function parseTierQwik(html) {
   return out.length ? out : null;
 }
 
-// "S-" with an ASCII hyphen renders as a tiny low dash; show a real minus
-// sign (and the plus) as a same-weight modifier next to the letter.
+// A font hyphen sits low and thin, U+2212 is wider than the letter: draw the
+// minus as a short bar (CSS .tmod.minus) and keep "+" as text.
 function tierHtml(t) {
   const m = String(t || '').match(/^([A-Z])([+-]?)$/);
   if (!m) return esc(t);
-  return m[2] ? `${m[1]}<span class="tmod">${m[2] === '-' ? '−' : '+'}</span>` : m[1];
+  if (!m[2]) return m[1];
+  return m[2] === '-' ? `${m[1]}<span class="tmod minus"></span>` : `${m[1]}<span class="tmod">+</span>`;
 }
 
 function tierIdx(t) {
@@ -371,4 +372,12 @@ window.addEventListener('DOMContentLoaded', () => {
   q.oninput = () => { query = q.value.trim().toLowerCase(); renderTable(); };
   document.querySelector('#otp-back').onclick = () => ipcRenderer.send('otp:go-home');
   load();
+});
+
+// Shared header (shell.js): route [data-go] clicks to main.
+document.addEventListener('click', (e) => {
+  const a = e.target && e.target.closest && e.target.closest('#otp-shell-header [data-go]');
+  if (!a) return;
+  e.preventDefault();
+  ipcRenderer.send('otp:go', a.dataset.go);
 });

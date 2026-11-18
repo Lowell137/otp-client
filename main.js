@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, shell, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, screen } = require('electron');
 const path = require('path');
 
 // Disable transparent window hardware acceleration issues on Windows that can freeze DWM / DirectX
@@ -216,20 +216,16 @@ function startLcuLoops() {
   }, 1000);
 }
 
-// Custom title bar: the window's own webContents draws titlebar.html (36 px);
-// the site / local pages live in `view` underneath. Windows keeps its native
-// min/max/close buttons through titleBarOverlay.
-const TITLEBAR_H = 36;
-let view = null;
-function layoutView() {
-  if (!win || win.isDestroyed() || !view) return;
-  const [w, h] = win.getContentSize();
-  view.setBounds({ x: 0, y: TITLEBAR_H, width: w, height: Math.max(0, h - TITLEBAR_H) });
-}
+// Frameless window: the page's own header is the title bar (drag region injected
+// by the preloads), Windows keeps native min/max/close via titleBarOverlay, tinted
+// to match the onetricks header so the app reads as one surface.
+const CAPTION = { color: '#141415', symbolColor: '#e8e6e3', height: 40 };
+let view = null; // { webContents } alias kept so older call sites read the same
 function pageKind(url) {
   const u = String(url || '');
   if (u.endsWith('tierlist.html')) return 'tier';
   if (u.endsWith('summoner.html')) return 'summoner';
+  if (u.endsWith('wallpapers.html')) return 'wallpapers';
   if (/onetricks\.gg\/champions\/builds\//i.test(u)) return 'build';
   if (/onetricks\.gg/i.test(u)) return 'home';
   return 'other';
@@ -238,23 +234,8 @@ function preloadFor(url) {
   const k = pageKind(url);
   if (k === 'tier') return path.join(__dirname, 'tier-preload.js');
   if (k === 'summoner') return path.join(__dirname, 'summoner-preload.js');
+  if (k === 'wallpapers') return path.join(__dirname, 'wallpapers-preload.js');
   return path.join(__dirname, 'preload.js');
-}
-let tbLcu = { state: 'off' };
-function sendTitlebar() {
-  if (!win || win.isDestroyed() || !view) return;
-  const wc = view.webContents;
-  const url = wc.getURL();
-  const champ = (url.match(/\/champions\/builds\/([^/?#]+)/i) || [])[1];
-  win.webContents.send('tb:state', {
-    page: pageKind(url),
-    champ: champ ? decodeURIComponent(champ) : null,
-    canBack: wc.canGoBack(),
-    canFwd: wc.canGoForward(),
-    loading: wc.isLoading(),
-    maximized: win.isMaximized(),
-    lcu: tbLcu,
-  });
 }
 
 async function createWindow() {
@@ -265,56 +246,32 @@ async function createWindow() {
     minHeight: 560,
     show: true,
     autoHideMenuBar: true,
-    backgroundColor: '#0b0e14',
+    backgroundColor: '#181a1b',
     icon: path.join(__dirname, 'assets/icon.ico'),
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#0b0e14', symbolColor: '#c9ccd4', height: TITLEBAR_H },
+    titleBarOverlay: CAPTION,
     webPreferences: {
-      preload: path.join(__dirname, 'titlebar-preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      // own in-memory session: session-wide preloads set for the content view never reach it
-      partition: 'otp-titlebar'
-    }
-  });
-  win.loadFile(path.join(__dirname, 'titlebar.html'));
-
-  // No fixed preload: the session preload is chosen per navigation (preloadFor),
-  // so back/forward between the site and local pages get the right script, once.
-  view = new WebContentsView({
-    webPreferences: {
+      // No fixed preload: the session preload is chosen per navigation (preloadFor),
+      // so back/forward between the site and local pages get the right script, once.
       contextIsolation: true,
       nodeIntegration: false
     }
   });
-  view.setBackgroundColor('#0b0e14');
-  view.webContents.session.setPreloads([preloadFor('https://www.onetricks.gg')]);
-  view.webContents.on('did-start-navigation', (d) => {
+  view = { webContents: win.webContents };
+  win.webContents.session.setPreloads([preloadFor('https://www.onetricks.gg')]);
+  win.webContents.on('did-start-navigation', (d) => {
     if (d && d.isMainFrame === false) return;
     const url = d && d.url;
-    if (url) view.webContents.session.setPreloads([preloadFor(url)]);
+    if (url) win.webContents.session.setPreloads([preloadFor(url)]);
   });
-  win.contentView.addChildView(view);
-  layoutView();
-  win.on('resize', layoutView);
-  win.on('maximize', () => { layoutView(); sendTitlebar(); });
-  win.on('unmaximize', () => { layoutView(); sendTitlebar(); });
-  win.webContents.on('did-finish-load', sendTitlebar);
-  ['did-navigate', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading'].forEach((ev) =>
-    view.webContents.on(ev, sendTitlebar));
   win.on('closed', () => { view = null; });
-  // Shortcuts while the page has focus: Alt+←/→, F5, Ctrl+K (title bar search).
-  view.webContents.on('before-input-event', (e, input) => {
+  // Shortcuts: Alt+Left/Right, F5.
+  win.webContents.on('before-input-event', (e, input) => {
     if (input.type !== 'keyDown') return;
-    const wc = view.webContents;
+    const wc = win.webContents;
     if (input.alt && input.key === 'ArrowLeft') { if (wc.canGoBack()) wc.goBack(); e.preventDefault(); }
     else if (input.alt && input.key === 'ArrowRight') { if (wc.canGoForward()) wc.goForward(); e.preventDefault(); }
     else if (input.key === 'F5') { wc.reload(); e.preventDefault(); }
-    else if ((input.control || input.meta) && String(input.key).toLowerCase() === 'k') {
-      e.preventDefault();
-      win.webContents.focus();
-      win.webContents.send('tb:focus-search');
-    }
   });
 
   win.once('ready-to-show', () => {
@@ -565,43 +522,36 @@ app.whenReady().then(async () => {
   ipcMain.on('otp:nav-forward', () => { if (win && !win.isDestroyed() && view.webContents.canGoForward()) view.webContents.goForward(); });
   ipcMain.on('otp:nav-reload', () => { if (win && !win.isDestroyed()) view.webContents.reload(); });
 
-  // ---- Title bar ----
-  ipcMain.on('tb:ready', () => sendTitlebar());
-  ipcMain.on('tb:go', (_e, where) => {
-    if (!win || win.isDestroyed() || !view) return;
-    const wc = view.webContents;
-    if (where === 'back') { if (wc.canGoBack()) wc.goBack(); }
-    else if (where === 'forward') { if (wc.canGoForward()) wc.goForward(); }
-    else if (where === 'reload') wc.reload();
-    else if (where === 'home') wc.loadURL('https://www.onetricks.gg');
-    else if (where === 'tier') wc.loadFile(path.join(__dirname, 'tierlist.html'));
-    else if (where === 'summoner') wc.loadFile(path.join(__dirname, 'summoner.html'));
-    else if (typeof where === 'object' && where?.champ) {
-      wc.loadURL(`https://www.onetricks.gg/champions/builds/${encodeURIComponent(where.champ)}`);
-    }
-  });
-  ipcMain.handle('tb:champs', async () => {
+  // Wallpapers page: champion list and each champion's skins (Data Dragon).
+  ipcMain.handle('otp:wall-champs', async () => {
     try {
       const base = await ddBase();
       const j = await (await fetch(`${base}/data/en_US/champion.json`)).json();
-      return Object.values(j.data).map((c) => ({ id: c.id, name: c.name, icon: `${base}/img/champion/${c.id}.png` }));
+      return Object.values(j.data)
+        .map((c) => ({ id: c.id, name: c.name, icon: `${base}/img/champion/${c.id}.png` }))
+        .sort((a, b) => a.name.localeCompare(b.name));
     } catch { return []; }
   });
-  // League client state for the title bar pill (every 2 s, cheap LCU calls only).
-  setInterval(async () => {
-    let next = { state: 'off' };
+  ipcMain.handle('otp:wall-skins', async (_e, id) => {
     try {
-      const { request } = require('league-connect');
-      const creds = await lcu.getCreds();
-      const ph = await request({ method: 'GET', url: '/lol-gameflow/v1/gameflow-phase' }, creds);
-      const phase = ph.status === 200 ? await ph.json() : 'None';
-      next = { state: 'on', phase };
-      if (phase === 'ChampSelect' && lastSentChamp) {
-        next.champ = await champIdToName(lastSentChamp).catch(() => null);
-      }
-    } catch {}
-    if (JSON.stringify(next) !== JSON.stringify(tbLcu)) { tbLcu = next; sendTitlebar(); }
-  }, 2000);
+      if (!/^[A-Za-z]+$/.test(String(id))) return [];
+      const base = await ddBase();
+      const j = await (await fetch(`${base}/data/en_US/champion/${id}.json`)).json();
+      return (j.data[id].skins || []).map((s) => ({ num: s.num, name: s.num === 0 ? 'Default' : s.name }));
+    } catch { return []; }
+  });
+
+  // Local pages' header nav (same items as the onetricks header).
+  ipcMain.on('otp:go', (_e, where) => {
+    if (!win || win.isDestroyed()) return;
+    const wc = win.webContents;
+    const site = { home: '', guides: '/guides', discover: '/discover' };
+    if (where in site) wc.loadURL('https://www.onetricks.gg' + site[where]);
+    else if (where === 'tier') wc.loadFile(path.join(__dirname, 'tierlist.html'));
+    else if (where === 'summoner') wc.loadFile(path.join(__dirname, 'summoner.html'));
+    else if (where === 'wallpapers') wc.loadFile(path.join(__dirname, 'wallpapers.html'));
+    else if (where === 'back') { if (wc.canGoBack()) wc.goBack(); }
+  });
 
   ipcMain.on('otp:settings', (_e, s) => {
     Object.assign(flags, s || {});

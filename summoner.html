@@ -9,11 +9,11 @@
   body {
     margin: 0;
     min-height: 100vh;
-    background-color: #0f1015;
+    background-color: #181a1b;
     background-image:
-      linear-gradient(rgba(10, 12, 16, 0.88), rgba(13, 15, 20, 0.94)),
+      linear-gradient(rgba(24, 26, 27, 0.86), rgba(24, 26, 27, 0.96)),
       var(--otp-splash, none),
-      linear-gradient(180deg, #0d1017 0%, #0f1115 60%, #0d0f14 100%);
+      linear-gradient(180deg, #181a1b 0%, #181a1b 60%, #181a1b 100%);
     background-position: center top;
     background-size: cover;
     background-attachment: fixed;
@@ -25,12 +25,12 @@
   }
   #otp-wrap { max-width: 1180px; margin: 0 auto; padding: 16px 20px 60px; }
   #otp-top { display: flex; align-items: center; gap: 12px; margin: 4px 0 16px; }
-  #otp-top h1 { font-size: 20px; margin: 0; flex: 1; font-weight: 700; color: #f3f4f6; }
+  #otp-top h1 { font-size: 20px; margin: 0; flex: 1; font-weight: 700; color: #e8e6e3; }
   #otp-back {
     width: 32px; height: 32px; flex: none;
     display: inline-flex; align-items: center; justify-content: center;
-    background: #16181f;
-    border: 1px solid #282b36;
+    background: #212324;
+    border: 1px solid #2c2f31;
     color: #c9ccd4;
     border-radius: 8px;
     padding: 0;
@@ -57,8 +57,8 @@
     gap: 8px;
     max-width: 620px;
     margin: 0 auto;
-    background: #16181f;
-    border: 1px solid #282b36;
+    background: #212324;
+    border: 1px solid #2c2f31;
     border-radius: 9999px;
     padding: 5px 6px 5px 8px;
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
@@ -119,14 +119,14 @@
     background: transparent;
     border: none;
     border-radius: 0;
-    color: #f3f4f6;
+    color: #e8e6e3;
     font-size: 14px;
     font-family: inherit;
     padding: 8px 8px;
     outline: none;
   }
   #otp-sinput::placeholder {
-    color: #656c80;
+    color: #8b8f92;
   }
 
   /* Search Button */
@@ -136,14 +136,14 @@
     justify-content: center;
     background: transparent;
     border: none;
-    color: #8f96a3;
+    color: #c2baaf;
     padding: 6px 12px;
     cursor: pointer;
     flex-shrink: 0;
     outline: none;
     transition: color 0.15s ease;
   }
-  #otp-sgo:hover { color: #f3f4f6; }
+  #otp-sgo:hover { color: #e8e6e3; }
   #otp-sgo * { pointer-events: none; }
 
   /* Sub Bar (Lobby) */
@@ -153,9 +153,9 @@
     margin-top: 10px;
   }
   #otp-slobby {
-    background: #16181f;
-    border: 1px solid #282b36;
-    color: #8f96a3;
+    background: #212324;
+    border: 1px solid #2c2f31;
+    color: #c2baaf;
     border-radius: 9999px;
     font-size: 12px;
     font-weight: 500;
@@ -167,8 +167,8 @@
     transition: all 0.15s ease;
   }
   #otp-slobby:hover {
-    background: #1c1f28;
-    border-color: #8f96a3;
+    background: #232526;
+    border-color: #c2baaf;
     color: #ffffff;
   }
   #otp-slobby * { pointer-events: none; }
@@ -183,8 +183,8 @@
     min-height: 10px;
   }
   .otp-chip {
-    background: #16181f;
-    border: 1px solid #282b36;
+    background: #212324;
+    border: 1px solid #2c2f31;
     color: #e8e6e3;
     border-radius: 9999px;
     padding: 4px 10px 4px 12px;
@@ -197,7 +197,7 @@
   }
   .otp-chip:hover {
     border-color: #1063b7;
-    background: #1c1f28;
+    background: #232526;
   }
   .otp-chip .rg {
     background: #1063b7;
@@ -207,15 +207,15 @@
     padding: 1px 7px;
     color: #fff;
   }
-  .otp-chip .x { color: #656c80; padding: 0 2px; }
+  .otp-chip .x { color: #8b8f92; padding: 0 2px; }
   .otp-chip .x:hover { color: #ef4444; }
 
   /* Queue Tabs & Refresh */
   #otp-qtabs { display: none; gap: 6px; margin: 18px 0 6px; }
   #otp-qtabs.show { display: flex; }
   .otp-qtab {
-    background: #16181f;
-    border: 1px solid #282b36;
+    background: #212324;
+    border: 1px solid #2c2f31;
     color: #e8e6e3;
     border-radius: 6px;
     padding: 6px 14px;
@@ -224,7 +224,7 @@
     cursor: pointer;
     transition: all 0.15s ease;
   }
-  .otp-qtab:hover { border-color: #4a536b; color: #fff; }
+  .otp-qtab:hover { border-color: #656e73; color: #fff; }
   .otp-qtab.sel {
     background: #1063b7;
     border-color: #1063b7;
@@ -233,9 +233,9 @@
   #otp-refresh {
     display: none;
     margin: 10px 0 0 auto;
-    background: #16181f;
-    border: 1px solid #282b36;
-    color: #8f96a3;
+    background: #212324;
+    border: 1px solid #2c2f31;
+    color: #c2baaf;
     border-radius: 6px;
     font-size: 12px;
     padding: 5px 12px;
@@ -244,7 +244,7 @@
   }
   #otp-refresh.show { display: block; }
   #otp-updated { font-size: 11px; color: #8b93a8; text-align: right; margin: 8px 0 2px; min-height: 14px; }
-  #otp-refresh:hover { color: #fff; border-color: #4a536b; }
+  #otp-refresh:hover { color: #fff; border-color: #656e73; }
   #otp-refresh.spin { animation: otp-spin 1s linear infinite; }
   @keyframes otp-spin { to { transform: rotate(360deg); } }
 
@@ -255,8 +255,8 @@
     align-items: center;
     gap: 16px;
     margin-bottom: 14px;
-    background: #16181f;
-    border: 1px solid #232631;
+    background: #212324;
+    border: 1px solid #2c2f31;
     border-radius: 8px;
     padding: 16px 18px;
   }
@@ -264,7 +264,7 @@
     width: 60px;
     height: 60px;
     border-radius: 6px;
-    border: 1px solid #282b36;
+    border: 1px solid #2c2f31;
   }
   .otp-sprof b {
     font-size: 18px;
@@ -274,19 +274,19 @@
     display: inline-block;
     margin-top: 4px;
     font-size: 11px;
-    color: #8f96a3;
-    background: #12141a;
+    color: #c2baaf;
+    background: #181a1b;
     padding: 1px 7px;
     border-radius: 3px;
-    border: 1px solid #232631;
+    border: 1px solid #2c2f31;
   }
 
   /* DeepLoL Style Stats Summary Block */
   .otp-dl-summary-box {
     display: flex;
     align-items: stretch;
-    background: #12141a;
-    border: 1px solid #232631;
+    background: #181a1b;
+    border: 1px solid #2c2f31;
     border-radius: 8px;
     padding: 12px 14px;
     margin-bottom: 14px;
@@ -297,7 +297,7 @@
     align-items: center;
     gap: 16px;
     padding-right: 16px;
-    border-right: 1px solid #232631;
+    border-right: 1px solid #2c2f31;
     min-width: 320px;
   }
   .otp-sum-circle {
@@ -311,7 +311,7 @@
     justify-content: center;
     font-weight: 800;
     font-size: 15px;
-    color: #f3f4f6;
+    color: #e8e6e3;
     flex-shrink: 0;
   }
   .otp-sum-details {
@@ -328,7 +328,7 @@
   .otp-sum-games {
     font-size: 14px;
     font-weight: 700;
-    color: #f3f4f6;
+    color: #e8e6e3;
   }
   .otp-sum-kda {
     font-size: 12px;
@@ -346,7 +346,7 @@
     align-items: center;
     gap: 12px;
     font-size: 11px;
-    color: #8f96a3;
+    color: #c2baaf;
   }
   .otp-sum-row-badges {
     display: flex;
@@ -370,7 +370,7 @@
     justify-content: center;
     gap: 6px;
     padding: 0 16px;
-    border-right: 1px solid #232631;
+    border-right: 1px solid #2c2f31;
     min-width: 220px;
   }
   .otp-sum-champ-row {
@@ -391,7 +391,7 @@
   }
   .otp-sum-champ-kda {
     font-size: 10px;
-    color: #8f96a3;
+    color: #c2baaf;
   }
 
   .otp-sum-col-roles {
@@ -406,7 +406,7 @@
   .otp-roles-title {
     font-size: 11px;
     font-weight: 700;
-    color: #8f96a3;
+    color: #c2baaf;
   }
   .otp-roles-bars {
     display: flex;
@@ -431,7 +431,7 @@
   }
   .otp-role-icon {
     font-size: 10px;
-    color: #8f96a3;
+    color: #c2baaf;
     font-weight: 600;
   }
 
@@ -470,8 +470,8 @@
 
   /* Left Sidebar Cards */
   .otp-side-card {
-    background: #16181f;
-    border: 1px solid #232631;
+    background: #212324;
+    border: 1px solid #2c2f31;
     border-radius: 8px;
     padding: 12px 14px;
     margin-bottom: 12px;
@@ -482,7 +482,7 @@
     align-items: center;
     font-size: 11.5px;
     font-weight: 700;
-    color: #8f96a3;
+    color: #c2baaf;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 10px;
@@ -503,11 +503,11 @@
   .otp-side-champ-name {
     font-weight: 600;
     font-size: 12px;
-    color: #f3f4f6;
+    color: #e8e6e3;
   }
   .otp-side-champ-kda {
     font-size: 10.5px;
-    color: #8f96a3;
+    color: #c2baaf;
   }
   .otp-side-champ-right {
     margin-left: auto;
@@ -519,7 +519,7 @@
   }
   .otp-side-champ-count {
     font-size: 10.5px;
-    color: #656c80;
+    color: #8b8f92;
   }
 
   /* DeepLoL Match Row */
@@ -531,15 +531,15 @@
     padding: 8px 12px;
     border-radius: 6px;
     border-left: 4px solid transparent;
-    background: #16181f;
+    background: #212324;
     margin-bottom: 6px;
-    border-top: 1px solid #232631;
-    border-right: 1px solid #232631;
-    border-bottom: 1px solid #232631;
+    border-top: 1px solid #2c2f31;
+    border-right: 1px solid #2c2f31;
+    border-bottom: 1px solid #2c2f31;
     transition: background 0.12s;
   }
   .otp-mrow:hover {
-    background: #1c1f28;
+    background: #232526;
   }
   .otp-mrow.win {
     border-left-color: #2563eb;
@@ -566,11 +566,11 @@
   .otp-m-queue {
     font-weight: 700;
     font-size: 11.5px;
-    color: #f3f4f6;
+    color: #e8e6e3;
   }
   .otp-m-time {
     font-size: 10px;
-    color: #8f96a3;
+    color: #c2baaf;
   }
   .otp-m-result {
     font-size: 11px;
@@ -608,12 +608,12 @@
   }
   .otp-m-kda-nums {
     font-weight: 700;
-    color: #f3f4f6;
+    color: #e8e6e3;
     font-size: 12.5px;
   }
   .otp-m-kda-ratio {
     font-size: 11px;
-    color: #8f96a3;
+    color: #c2baaf;
   }
 
   .otp-m-ai {
@@ -652,15 +652,15 @@
     gap: 12px;
     padding: 8px 14px;
     border-radius: 6px;
-    background: #16181f;
+    background: #212324;
     margin-bottom: 4px;
-    border: 1px solid #232631;
+    border: 1px solid #2c2f31;
     cursor: pointer;
     transition: all 0.15s ease;
   }
   .otp-lobrow:hover, .otp-cand:hover {
     border-color: #1063b7;
-    background: #1c1f28;
+    background: #232526;
   }
 
   /* ==========================================================================
@@ -671,7 +671,7 @@
     border-radius: 6px;
     overflow: hidden;
     margin-bottom: 10px;
-    border: 1px solid #232631;
+    border: 1px solid #2c2f31;
     font-size: 12px;
   }
 
@@ -724,7 +724,7 @@
     gap: 8px;
     padding: 7px 12px;
     font-size: 11.5px;
-    color: #8f96a3;
+    color: #c2baaf;
     font-weight: 600;
   }
   .otp-dl-head-left {
@@ -748,7 +748,7 @@
     background: #1d4ed8;
   }
   .otp-dl-teamname {
-    color: #8f96a3;
+    color: #c2baaf;
     font-size: 12px;
   }
 
@@ -809,7 +809,7 @@
     padding: 1px 4px;
     border-radius: 3px;
     border: 1px solid #4a5163;
-    color: #8f96a3;
+    color: #c2baaf;
     line-height: 1.2;
     flex: none;
   }
@@ -829,19 +829,19 @@
   }
   .otp-dl-namebox .p-name {
     font-weight: 700;
-    color: #f3f4f6;
+    color: #e8e6e3;
     font-size: 12.5px;
   }
   .otp-dl-namebox .p-name.otp-plink { cursor: pointer; }
   .otp-dl-namebox .p-name.otp-plink:hover { color: #6cb2ff; text-decoration: underline; }
   .otp-dl-namebox .p-tag {
-    color: #656c80;
+    color: #8b8f92;
     font-size: 11px;
     font-weight: normal;
   }
   .otp-dl-namebox .p-champ {
     font-size: 11px;
-    color: #8f96a3;
+    color: #c2baaf;
   }
 
   /* Column 2: AI-Score Cell */
@@ -863,7 +863,7 @@
   }
   .otp-dl-rank {
     font-size: 11px;
-    color: #8f96a3;
+    color: #c2baaf;
     white-space: nowrap;
   }
   .otp-dl-rank.mvp {
@@ -878,12 +878,12 @@
   }
   .otp-dl-kdacell .kda-nums {
     font-weight: 700;
-    color: #f3f4f6;
+    color: #e8e6e3;
     font-size: 12px;
   }
   .otp-dl-kdacell .kda-ratio {
     font-size: 11px;
-    color: #8f96a3;
+    color: #c2baaf;
   }
   .otp-dl-kdacell .kda-ratio.high {
     color: #f59e0b;
@@ -928,7 +928,7 @@
   }
   .otp-dl-cscell .cs-pm {
     font-size: 10.5px;
-    color: #8f96a3;
+    color: #c2baaf;
   }
 
   /* Column 6: Items Cell */
@@ -952,12 +952,13 @@
     margin-left: 2px;
   }
 
-  .otp-serr { padding: 24px; text-align: center; color: #8f96a3; }
+  .otp-serr { padding: 24px; text-align: center; color: #c2baaf; }
   .otp-serr a { color: #6cb2ff; }
-  #otp-foot { margin-top: 18px; font-size: 11px; color: #656c80; text-align: center; }
+  #otp-foot { margin-top: 18px; font-size: 11px; color: #8b8f92; text-align: center; }
 </style>
+<link rel="stylesheet" href="shell.css">
 </head>
-<body>
+<body data-page="summoner">
 <div id="otp-wrap">
   <div id="otp-top"><button id="otp-back" title="Back" aria-label="Back"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button><h1>Summoner Lookup</h1></div>
   <div id="otp-hero">
@@ -984,6 +985,7 @@
   <div id="otp-sbody"></div>
 <div id="otp-foot">Keyless lookup · Data: deeplol · Click a match for both teams</div>
   </div>
+<script src="shell.js"></script>
 <script src="bg.js"></script>
 </body>
 </html>

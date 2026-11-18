@@ -9,29 +9,28 @@
   body {
     margin: 0;
     min-height: 100vh;
-    background-color: #0f1015;
+    background-color: #181a1b;
     background-image:
-      linear-gradient(rgba(10, 12, 16, 0.88), rgba(13, 15, 20, 0.94)),
+      linear-gradient(rgba(24, 26, 27, 0.86), rgba(24, 26, 27, 0.96)),
       var(--otp-splash, none),
-      linear-gradient(180deg, #0d1017 0%, #0f1115 60%, #0d0f14 100%);
+      linear-gradient(180deg, #181a1b 0%, #181a1b 60%, #181a1b 100%);
     background-position: center top;
     background-size: cover;
     background-attachment: fixed;
     background-repeat: no-repeat;
     color: #e8e6e3;
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     font-size: 13px;
     -webkit-font-smoothing: antialiased;
   }
   #otp-wrap { max-width: 1040px; margin: 0 auto; padding: 20px 20px 60px; }
   #otp-top { display: flex; align-items: center; gap: 12px; margin: 4px 0 16px; }
-  #otp-top h1 { font-size: 20px; margin: 0; font-weight: 700; color: #f3f4f6; }
-  #otp-patch { font-size: 12px; color: #8f96a3; }
+  #otp-top h1 { font-size: 20px; margin: 0; font-weight: 700; color: #e8e6e3; }
+  #otp-patch { font-size: 12px; color: #c2baaf; }
   #otp-back {
     width: 32px; height: 32px; flex: none;
     display: inline-flex; align-items: center; justify-content: center;
-    background: #161821;
-    border: 1px solid #282d3b;
+    background: #212324;
+    border: 1px solid #2c2f31;
     color: #c9ccd4;
     border-radius: 8px;
     padding: 0;
@@ -43,8 +42,8 @@
 
   #otp-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
   .otp-tab {
-    background: #161821;
-    border: 1px solid #282d3b;
+    background: #212324;
+    border: 1px solid #2c2f31;
     color: #e8e6e3;
     border-radius: 6px;
     padding: 6px 14px;
@@ -53,32 +52,32 @@
     cursor: pointer;
     transition: all 0.15s ease;
   }
-  .otp-tab:hover { border-color: #4a536b; color: #fff; }
+  .otp-tab:hover { border-color: #656e73; color: #fff; }
   .otp-tab.sel { background: #1063b7; border-color: #1063b7; color: #fff; font-weight: 600; }
 
   #otp-q {
     margin-left: auto;
-    background: #161821;
-    border: 1px solid #282d3b;
+    background: #212324;
+    border: 1px solid #2c2f31;
     border-radius: 6px;
-    color: #f3f4f6;
+    color: #e8e6e3;
     font-size: 12.5px;
     padding: 6px 12px;
     outline: none;
     width: 210px;
     transition: border-color 0.15s, box-shadow 0.15s;
   }
-  #otp-q::placeholder { color: #656c80; }
+  #otp-q::placeholder { color: #8b8f92; }
   #otp-q:focus {
     border-color: #1063b7;
     box-shadow: 0 0 0 2px rgba(16, 99, 183, 0.25);
   }
 
   #otp-filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-  #otp-filters label { font-size: 12px; color: #8f96a3; display: flex; align-items: center; gap: 6px; }
+  #otp-filters label { font-size: 12px; color: #c2baaf; display: flex; align-items: center; gap: 6px; }
   #otp-filters select {
-    background: #161821;
-    border: 1px solid #282d3b;
+    background: #212324;
+    border: 1px solid #2c2f31;
     color: #e8e6e3;
     border-radius: 6px;
     font-size: 12.5px;
@@ -91,8 +90,8 @@
 
   #otp-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
   .otp-chip {
-    background: #161821;
-    border: 1px solid #282d3b;
+    background: #212324;
+    border: 1px solid #2c2f31;
     color: #e8e6e3;
     border-radius: 20px;
     padding: 3px 12px;
@@ -102,47 +101,49 @@
     transition: all 0.15s ease;
   }
   .tmod { display: inline-block; margin-left: 1px; font-weight: 800; line-height: 1; }
-  .otp-chip:hover { border-color: #555d73; }
+  .tmod.minus { width: 0.38em; height: 0.13em; margin-left: 0.12em; background: currentColor; border-radius: 1px; vertical-align: 0.3em; }
+  .otp-chip:hover { border-color: #656e73; }
   .otp-chip.sel { background: #1063b7; border-color: #1063b7 !important; color: #fff; }
 
   table {
     width: 100%;
     border-collapse: collapse;
-    background: #161821;
-    border: 1px solid #222633;
+    background: #212324;
+    border: 1px solid #2c2f31;
     border-radius: 8px;
     overflow: hidden;
   }
   thead th {
     text-align: left;
     font-size: 12px;
-    color: #8f96a3;
+    color: #c2baaf;
     font-weight: 600;
     padding: 10px 12px;
-    background: #12141c;
-    border-bottom: 1px solid #222633;
+    background: #181a1b;
+    border-bottom: 1px solid #2c2f31;
     cursor: pointer;
     user-select: none;
     white-space: nowrap;
     transition: color 0.15s;
   }
   thead th:hover { color: #fff; }
-  tbody td { padding: 8px 12px; border-bottom: 1px solid #1c1f2b; }
+  tbody td { padding: 8px 12px; border-bottom: 1px solid #2c2f31; }
   tbody tr { cursor: pointer; transition: background 0.12s; }
-  tbody tr:hover { background: #1a1e28; }
+  tbody tr:hover { background: #232526; }
   tbody tr:last-child td { border-bottom: none; }
   td.c { text-align: center; }
   td.r { text-align: right; font-variant-numeric: tabular-nums; }
   .otp-champ { display: flex; align-items: center; gap: 10px; }
   .otp-champ img { width: 32px; height: 32px; border-radius: 4px; }
   .otp-tier { display: inline-block; min-width: 34px; text-align: center; font-weight: 800; font-size: 12px; border-radius: 4px; padding: 3px 8px; color: #111; }
-  .dim { color: #8f96a3; font-size: 11.5px; }
-  .otp-empty { text-align: center; color: #8f96a3; padding: 28px !important; }
+  .dim { color: #c2baaf; font-size: 11.5px; }
+  .otp-empty { text-align: center; color: #c2baaf; padding: 28px !important; }
   .otp-empty a { color: #6cb2ff; }
-  #otp-foot { margin-top: 14px; font-size: 11px; color: #656c80; }
+  #otp-foot { margin-top: 14px; font-size: 11px; color: #8b8f92; }
 </style>
+<link rel="stylesheet" href="shell.css">
 </head>
-<body>
+<body data-page="tier">
 <div id="otp-wrap">
   <div id="otp-top"><button id="otp-back" title="Back" aria-label="Back"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button><h1>Tier List</h1><span id="otp-patch"></span></div>
   <div id="otp-bar"><div id="otp-tabs" style="display:flex;gap:8px;flex-wrap:wrap"></div><input id="otp-q" placeholder="Search champion…" autocomplete="off"></div>
@@ -155,6 +156,7 @@
   <table id="otp-tbl"><thead><tr></tr></thead><tbody></tbody></table>
   <div id="otp-foot">Data: Lolalytics (Emerald+) · Click a row → open build page</div>
 </div>
+<script src="shell.js"></script>
 <script src="bg.js"></script>
 </body>
 </html>

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wallpapers — OTP Client</title>
+<link rel="stylesheet" href="shell.css">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--text); font-size: 13px; -webkit-font-smoothing: antialiased;
+    background-color: var(--bg);
+    background-image: linear-gradient(rgba(24, 26, 27, 0.86), rgba(24, 26, 27, 0.96)), var(--otp-splash, none);
+    background-position: center top; background-size: cover; background-attachment: fixed; background-repeat: no-repeat;
+  }
+  #wrap { max-width: 1240px; margin: 0 auto; padding: 20px 20px 60px; }
+  #top { display: flex; align-items: baseline; gap: 12px; margin: 4px 0 6px; }
+  #top h1 { font-size: 20px; margin: 0; font-weight: 700; }
+  #top .sub { color: var(--lightText); font-size: 12px; }
+
+  .sec { margin: 18px 0 10px; display: flex; align-items: center; gap: 10px; }
+  .sec h2 { margin: 0; font-size: 14px; font-weight: 700; }
+  .sec .count { color: var(--mute); font-size: 12px; }
+  .sec button { margin-left: auto; }
+
+  .btn { background: var(--fg); border: 1px solid var(--border-light); color: var(--text); border-radius: 6px;
+    font: inherit; font-size: 12px; padding: 6px 12px; cursor: pointer; }
+  .btn:hover { border-color: var(--border); }
+
+  #saved { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; min-height: 30px; }
+  #saved:empty::before { content: 'Nothing saved yet. Pick a champion below and click the splash arts you like.';
+    color: var(--mute); font-size: 12px; }
+  .sv { position: relative; flex: none; width: 176px; aspect-ratio: 16 / 9.4; border-radius: 10px; overflow: hidden;
+    border: 1px solid var(--border-light); background: var(--fg) center / cover no-repeat; }
+  .sv .x { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; border: 0;
+    background: rgba(0,0,0,.65); color: #fff; cursor: pointer; font-size: 12px; line-height: 22px; padding: 0; }
+  .sv .x:hover { background: #c0392b; }
+
+  #main { display: grid; grid-template-columns: 220px 1fr; gap: 16px; margin-top: 8px; }
+  #side { background: var(--fg); border: 1px solid var(--border-light); border-radius: 10px; overflow: hidden;
+    display: flex; flex-direction: column; height: calc(100vh - 66px - 230px); min-height: 320px; position: sticky; top: 82px; }
+  #q { margin: 10px; background: var(--bg); border: 1px solid var(--border-light); border-radius: 6px; color: var(--text);
+    font: inherit; padding: 7px 10px; outline: none; }
+  #q:focus { border-color: var(--blue); }
+  #champs { overflow-y: auto; flex: 1; padding: 0 6px 8px; }
+  .ch { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; cursor: pointer; }
+  .ch img { width: 24px; height: 24px; border-radius: 4px; }
+  .ch:hover { background: var(--hover); }
+  .ch.on { background: var(--fg-raised); font-weight: 700; }
+  .ch .n { margin-left: auto; color: var(--blue); font-size: 11px; font-weight: 700; }
+
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; align-content: start; }
+  .sk { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--border-light); background: var(--fg);
+    cursor: pointer; aspect-ratio: 16 / 9.4; }
+  .sk img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .25s; }
+  .sk:hover img { transform: scale(1.03); }
+  .sk .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 10px 8px; font-size: 12px; font-weight: 600;
+    background: linear-gradient(transparent, rgba(0,0,0,.8)); }
+  .sk .star { position: absolute; top: 8px; right: 8px; height: 26px; padding: 0 10px; border-radius: 13px;
+    background: rgba(0,0,0,.6); color: #fff; font-size: 11.5px; font-weight: 700; display: flex; align-items: center; gap: 5px; }
+  .sk.on { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+  .sk.on .star { background: var(--blue); }
+  .empty { color: var(--mute); padding: 30px 0; }
+</style>
+</head>
+<body data-page="wallpapers">
+<div id="wrap">
+  <div id="top"><h1>Wallpapers</h1><span class="sub">Background for Tier List and Summoner. One of your saved splash arts is picked on each visit.</span></div>
+
+  <div class="sec"><h2>Saved</h2><span class="count" id="count"></span><button class="btn" id="clear">Clear all</button></div>
+  <div id="saved"></div>
+
+  <div id="main">
+    <div id="side">
+      <input id="q" placeholder="Search champion…" autocomplete="off" spellcheck="false">
+      <div id="champs"></div>
+    </div>
+    <div>
+      <div class="sec" style="margin-top:0"><h2 id="cname">—</h2><span class="count">Click a splash to save or remove it</span></div>
+      <div id="grid"></div>
+    </div>
+  </div>
+</div>
+<script src="shell.js"></script>
+<script>
+  const DD = 'https://ddragon.leagueoflegends.com/cdn/img/champion/splash/';
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+
+  function getSaved() {
+    try { const v = JSON.parse(localStorage.getItem('otp.wallpapers') || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+  }
+  function setSaved(v) {
+    try { localStorage.setItem('otp.wallpapers', JSON.stringify(v)); } catch {}
+    renderSaved(); markGrid(); renderChampCounts();
+  }
+  function toggle(key) {
+    const s = getSaved();
+    const i = s.indexOf(key);
+    if (i >= 0) s.splice(i, 1); else s.unshift(key);
+    setSaved(s);
+  }
+
+  function renderSaved() {
+    const s = getSaved();
+    $('#count').textContent = s.length ? `${s.length}` : '';
+    $('#clear').style.display = s.length ? '' : 'none';
+    $('#saved').innerHTML = s.map((k) =>
+      `<div class="sv" style="background-image:url('${DD}${k}.jpg')" title="${esc(k.replace('_', ' #'))}"><button class="x" data-k="${esc(k)}" title="Remove">✕</button></div>`).join('');
+  }
+  $('#saved').addEventListener('click', (e) => {
+    const b = e.target.closest('.x');
+    if (b) toggle(b.dataset.k);
+  });
+  $('#clear').onclick = () => { if (confirm('Remove all saved wallpapers?')) setSaved([]); };
+
+  let champs = [];
+  let cur = null;
+  function renderChampCounts() {
+    const per = {};
+    getSaved().forEach((k) => { const id = k.split('_')[0]; per[id] = (per[id] || 0) + 1; });
+    document.querySelectorAll('.ch').forEach((el) => {
+      el.querySelector('.n').textContent = per[el.dataset.id] ? per[el.dataset.id] : '';
+    });
+  }
+  function renderChamps() {
+    const q = $('#q').value.trim().toLowerCase();
+    $('#champs').innerHTML = champs.filter((c) => !q || c.name.toLowerCase().includes(q)).map((c) =>
+      `<div class="ch${c.id === cur ? ' on' : ''}" data-id="${c.id}"><img loading="lazy" src="${c.icon}" alt=""><span>${esc(c.name)}</span><span class="n"></span></div>`).join('');
+    renderChampCounts();
+  }
+  $('#q').oninput = renderChamps;
+  $('#champs').addEventListener('click', (e) => {
+    const el = e.target.closest('.ch');
+    if (el) openChamp(el.dataset.id);
+  });
+
+  async function openChamp(id) {
+    cur = id;
+    document.querySelectorAll('.ch').forEach((el) => el.classList.toggle('on', el.dataset.id === id));
+    const c = champs.find((x) => x.id === id);
+    $('#cname').textContent = c ? c.name : id;
+    $('#grid').innerHTML = '<div class="empty">Loading…</div>';
+    const skins = await otpWall.skins(id);
+    if (cur !== id) return;
+    // Newest skins first, the default skin last.
+    const list = [...skins].sort((a, b) => (a.num === 0) - (b.num === 0) || b.num - a.num);
+    $('#grid').innerHTML = list.map((s) => {
+      const k = `${id}_${s.num}`;
+      return `<div class="sk" data-k="${k}"><img loading="lazy" src="${DD}${k}.jpg" alt="" onerror="this.closest('.sk').remove()">
+        <div class="cap">${esc(s.name)}</div><div class="star"></div></div>`;
+    }).join('') || '<div class="empty">No skins.</div>';
+    markGrid();
+  }
+  function markGrid() {
+    const s = new Set(getSaved());
+    document.querySelectorAll('.sk').forEach((el) => {
+      const on = s.has(el.dataset.k);
+      el.classList.toggle('on', on);
+      el.querySelector('.star').textContent = on ? '★ Saved' : '☆ Save';
+    });
+  }
+  $('#grid').addEventListener('click', (e) => {
+    const el = e.target.closest('.sk');
+    if (el) toggle(el.dataset.k);
+  });
+
+  renderSaved();
+  otpWall.champs().then((list) => {
+    champs = list || [];
+    renderChamps();
+    const first = getSaved()[0];
+    openChamp(first ? first.split('_')[0] : (champs[0] && champs[0].id));
+  });
+</script>
+<script src="bg.js"></script>
+</body>
+</html>

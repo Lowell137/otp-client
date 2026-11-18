@@ -867,6 +867,11 @@ a.pro-btn,button.pro-btn,a.get-pro-btn{display:none !important}
 .header-menu-btn, .home-header-menu-btn{display:none !important}
 a[href*="discord"], .sidePanel{display:none !important}
 #otp-tiernav,#otp-sumnav{display:inline-flex !important;align-items:center !important;cursor:pointer !important}
+/* The site's header is the window title bar: drag on empty space, clickables stay
+   clickable, and the right edge leaves room for the native min/max/close buttons. */
+header{-webkit-app-region:drag;user-select:none}
+header a,header button,header input,header [role],header [type="button"],header svg,header img,header select,header .IconButton{-webkit-app-region:no-drag}
+header>ul{padding-right:142px !important;box-sizing:border-box}
 #ad-slot,[id="ad-slot"],.vm-placement,[class*="vm-placement"]{display:none !important;height:0 !important;min-height:0 !important;max-height:0 !important;margin:0 !important;padding:0 !important;opacity:0 !important;pointer-events:none !important;visibility:hidden !important;}
 `;
 

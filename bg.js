@@ -1,57 +1,37 @@
-// Random champion splash for the local pages (Tier List, Summoner).
-// Picks a random champion and one of its skins from Data Dragon on every load.
-// The champion list is cached in localStorage for a day; the splash fades in once loaded.
+// Background splash for the local pages (Tier List, Summoner, Wallpapers).
+// Picks one of the user's saved wallpapers (Wallpapers page, localStorage
+// 'otp.wallpapers'); until something is saved, a small hand-picked default set.
 (function () {
-  const DD = 'https://ddragon.leagueoflegends.com';
-  const DAY = 24 * 60 * 60 * 1000;
+  const DD = 'https://ddragon.leagueoflegends.com/cdn/img/champion/splash/';
+  const DEFAULTS = ['Ahri_86', 'Jinx_60', 'Yasuo_77', 'Kaisa_70', 'Akali_60', 'Yone_19', 'Viego_37', 'Seraphine_43', 'Sett_66', 'Lux_70'];
 
-  function cacheGet(k) {
+  function saved() {
     try {
-      const v = JSON.parse(localStorage.getItem(k) || 'null');
-      return v && Date.now() - v.ts < DAY ? v.data : null;
-    } catch { return null; }
-  }
-  function cacheSet(k, data) {
-    try { localStorage.setItem(k, JSON.stringify({ ts: Date.now(), data })); } catch {}
-  }
-  const pick = (a) => a[Math.floor(Math.random() * a.length)];
-
-  async function champList() {
-    let c = cacheGet('otp.bg.champs');
-    if (c) return c;
-    const v = (await (await fetch(`${DD}/api/versions.json`)).json())[0];
-    const j = await (await fetch(`${DD}/cdn/${v}/data/en_US/champion.json`)).json();
-    c = { v, ids: Object.keys(j.data) };
-    cacheSet('otp.bg.champs', c);
-    return c;
+      const v = JSON.parse(localStorage.getItem('otp.wallpapers') || '[]');
+      return Array.isArray(v) ? v.filter((x) => typeof x === 'string' && /^[A-Za-z]+_\d+$/.test(x)) : [];
+    } catch { return []; }
   }
 
-  async function randomSplash() {
-    const { v, ids } = await champList();
-    const id = pick(ids);
-    let num = 0;
-    try {
-      const j = await (await fetch(`${DD}/cdn/${v}/data/en_US/champion/${id}.json`)).json();
-      const skins = (j.data[id].skins || []).map((s) => s.num);
-      if (skins.length) num = pick(skins);
-    } catch {}
-    return `${DD}/cdn/img/champion/splash/${id}_${num}.jpg`;
+  // Avoid showing the same splash twice in a row.
+  function choose(list) {
+    let last = null;
+    try { last = sessionStorage.getItem('otp.bg.last'); } catch {}
+    const pool = list.length > 1 ? list.filter((k) => k !== last) : list;
+    const k = pool[Math.floor(Math.random() * pool.length)];
+    try { sessionStorage.setItem('otp.bg.last', k); } catch {}
+    return k;
   }
 
-  function apply(url, tries = 0) {
+  function apply(list, tries = 0) {
+    if (!list.length || tries > 4) return;
+    const key = choose(list);
+    const url = DD + key + '.jpg';
     const img = new Image();
-    img.onload = () => {
-      document.body.style.setProperty('--otp-splash', `url("${url}")`);
-    };
-    // Some skins have no splash on Data Dragon: fall back to the base skin, then retry another champ.
-    img.onerror = () => {
-      if (tries === 0 && !/_0\.jpg$/.test(url)) apply(url.replace(/_\d+\.jpg$/, '_0.jpg'), 1);
-      else if (tries < 3) randomSplash().then((u) => apply(u, tries + 1)).catch(() => {});
-    };
+    img.onload = () => document.body.style.setProperty('--otp-splash', `url("${url}")`);
+    img.onerror = () => apply(list.filter((k) => k !== key), tries + 1);
     img.src = url;
   }
 
-  randomSplash().then(apply).catch(() => {
-    apply(`${DD}/cdn/img/champion/splash/${pick(['Ahri', 'Jinx', 'Yasuo', 'Lux', 'Thresh', 'Ezreal'])}_0.jpg`);
-  });
+  const mine = saved();
+  apply(mine.length ? mine : DEFAULTS);
 })();
