@@ -791,6 +791,7 @@ function syncCaption() {
   // Inner pages' <header> has no box of its own (height 0); its <ul> is the bar.
   const height = Math.round(Math.max(h.getBoundingClientRect().height,
     h.firstElementChild ? h.firstElementChild.getBoundingClientRect().height : 0)) || 40;
+  document.documentElement.style.setProperty('--otp-hh', height + 'px');
   try { ipcRenderer.send('otp:caption', { color: hex, height }); } catch {}
 }
 window.addEventListener('resize', () => { clearTimeout(window._otpCapT); window._otpCapT = setTimeout(syncCaption, 150); });
@@ -890,6 +891,11 @@ a[href*="discord"], .sidePanel{display:none !important}
 header{-webkit-app-region:drag;user-select:none}
 header a,header button,header input,header [role],header [type="button"],header svg,header img,header select,header .IconButton{-webkit-app-region:no-drag}
 header>ul{padding-right:142px !important;box-sizing:border-box}
+/* Keep the header (= title bar) on top while scrolling. Inner pages already pin
+   their header (fixed <ul>); the home page header (layout_headerTop) scrolls away,
+   so pin it and push the page down by its height (--otp-hh, set by syncCaption). */
+header[class*="layout_headerTop"]{position:fixed !important;top:0 !important;left:0 !important;right:0 !important;z-index:1000 !important}
+body:has(header[class*="layout_headerTop"]){padding-top:var(--otp-hh,66px) !important}
 #ad-slot,[id="ad-slot"],.vm-placement,[class*="vm-placement"],.ad-slot,.square-ad,.ad-md,.ad-lg,.ad-sidePanel,[class*="ad-leftSidePanel"],[class*="ad-rightSidePanel"],ins.adsbygoogle,iframe[src*="safeframe"],iframe[id^="google_ads"],[id^="div-gpt-ad"],[class*="pw-tag"],[id*="pw-oop"]{display:none !important;height:0 !important;min-height:0 !important;max-height:0 !important;margin:0 !important;padding:0 !important;opacity:0 !important;pointer-events:none !important;visibility:hidden !important;}
 `;
 
