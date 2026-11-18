@@ -330,11 +330,25 @@ function extractStats(popStat) {
   return [5008, 5008, 5001];
 }
 
+// Same rule as preload.js pickPatch: newest "X.Y" patch with a usable sample,
+// else the season aggregate, else "all". Object.keys()[0] is the season key.
+function pickPatch(pp) {
+  const fis = pp.firstItemStats || {};
+  const stats = pp.patchStats || {};
+  const keys = Object.keys(fis);
+  const ver = (k) => k.split('.').map(Number);
+  const newer = (a, b) => { const x = ver(a), y = ver(b); return (y[0] - x[0]) || (y[1] - x[1]); };
+  const exact = keys.filter((k) => /^\d+\.\d+$/.test(k)).sort(newer);
+  const usable = exact.find((k) => stats[k] == null || stats[k] >= 30);
+  if (usable) return usable;
+  const season = keys.filter((k) => /^\d+$/.test(k)).sort((a, b) => b - a)[0];
+  return season || (fis.all ? 'all' : keys[0]);
+}
+
 function finishOtpBuild(pp, champion) {
   const champ = pp.champion || champion;
   const fis = pp.firstItemStats;
-  const patches = Object.keys(fis || {});
-  const patch = patches[0] || '16.18';
+  const patch = pickPatch(pp);
   const byFirst = fis?.[patch] || {};
   const group = byFirst.all ?? byFirst[Object.keys(byFirst)[0]];
   if (!group) throw new Error('empty build group');

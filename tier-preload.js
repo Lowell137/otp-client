@@ -1,10 +1,24 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-const TIER_ORDER = ['S+', 'S', 'S-', 'A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D'];
-const TIER_COLORS = { 'S+': '#ff4655', 'S': '#ff8c42', 'S-': '#ffa94d', 'A+': '#ffd166', 'A': '#e3d76b', 'A-': '#b8e986', 'B+': '#7bd88f', 'B': '#5fc98a', 'B-': '#4db8a0', 'C+': '#6cb2ff', 'C': '#5b8fd6', 'C-': '#4a6fa5', 'D': '#9aa3b8' };
+const TIER_ORDER = ['S+', 'S', 'S-', 'A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-'];
+const TIER_COLORS = { 'S+': '#ff4655', 'S': '#ff8c42', 'S-': '#ffa94d', 'A+': '#ffd166', 'A': '#e3d76b', 'A-': '#b8e986', 'B+': '#7bd88f', 'B': '#5fc98a', 'B-': '#4db8a0', 'C+': '#6cb2ff', 'C': '#5b8fd6', 'C-': '#4a6fa5', 'D+': '#b0b7c8', 'D': '#9aa3b8', 'D-': '#7f889c' };
 const LANES = [['all', 'All'], ['top', 'Top'], ['jungle', 'Jungle'], ['middle', 'Mid'], ['bottom', 'Bot'], ['support', 'Support']];
 const TIERS = [['emerald_plus', 'Emerald+'], ['platinum_plus', 'Platinum+'], ['diamond_plus', 'Diamond+'], ['master_plus', 'Master+'], ['challenger', 'Challenger']];
-const PATCH_OPTIONS = [['', 'Current'], ['16.18', '16.18'], ['16.17', '16.17'], ['16.16', '16.16'], ['16.15', '16.15'], ['16.14', '16.14']];
+// Built from the patch lolalytics reports as current (it can lag Data Dragon by a patch),
+// so the list never goes stale: current + the 4 before it.
+let PATCH_OPTIONS = [['', 'Current']];
+function setPatchOptionsFrom(cur) {
+  const m = String(cur || '').match(/^(\d+)\.(\d+)/);
+  if (!m) return;
+  const major = Number(m[1]);
+  const list = [];
+  for (let minor = Number(m[2]); minor >= 1 && list.length < 5; minor--) list.push(`${major}.${minor}`);
+  const next = [['', 'Current'], ...list.map((p) => [p, p])];
+  if (JSON.stringify(next) === JSON.stringify(PATCH_OPTIONS)) return;
+  PATCH_OPTIONS = next;
+  const el = document.querySelector('#otp-patchsel');
+  if (el) { delete el.dataset.done; fillSelect('#otp-patchsel', PATCH_OPTIONS, patchSel); }
+}
 const REGIONS = [['all', 'Global'], ['kr', 'KR'], ['euw', 'EUW'], ['eune', 'EUNE'], ['na', 'NA'], ['br', 'BR'], ['tr', 'TR'], ['ru', 'RU'], ['jp', 'JP'], ['oce', 'OCE']];
 const COLS = [
   { k: 'rank', label: '#', num: true },
@@ -74,7 +88,8 @@ function parseTierHTML(html) {
   patch = (html.match(/Patch ([\d.]+)/) || [])[1] || '';
   const bm = html.match(/Average (.*?) Win Rate/);
   bracket = bm ? bm[1] : '';
-  const an = html.match(/Champions Analysed:.*?([\d,]+)/);
+  // lolalytics puts Qwik comment markers (<!--t=2q-->) before the number.
+  const an = html.replace(/<!--[\s\S]*?-->/g, '').match(/Champions Analysed:(?:\s|<[^>]*>)*([\d,]+)/);
   analysed = an ? an[1] : '';
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const out = [];
@@ -95,7 +110,7 @@ function parseTierHTML(html) {
         if (!w) return;
         const t = (cell.textContent || '').trim();
         if (w[1] === '40') {
-          if (/^(S\+|S-|S|A\+|A-|A|B\+|B-|B|C\+|C-|C|D)$/.test(t)) tier = t;
+          if (/^(S\+|S-|S|A\+|A-|A|B\+|B-|B|C\+|C-|C|D\+|D-|D)$/.test(t)) tier = t;
           else if (/^\d+$/.test(t) && rank === null) rank = Number(t);
           const limg = cell.querySelector('img[alt$="lane"]');
           if (limg) {
@@ -129,6 +144,49 @@ function parseTierHTML(html) {
     } catch {}
   });
   return out;
+}
+
+// lolalytics now server-renders only the first 20 rows as HTML; the full table
+// (every champion) is in the page's Qwik state. Values there are base-36 refs
+// into the `objs` array. Tier is a number: 1 = S+ ... 15 = D-.
+async function parseTierQwik(html) {
+  const m = html.match(/<script type="qwik\/json">([\s\S]*?)<\/script>/);
+  if (!m) return null;
+  let O;
+  try { O = JSON.parse(m[1]).objs; } catch { return null; }
+  if (!Array.isArray(O)) return null;
+  const deref = (ref, d = 0) => {
+    if (typeof ref !== 'string' || d > 6) return ref;
+    const v = O[parseInt(ref, 36)];
+    if (Array.isArray(v)) return v.map((x) => deref(x, d + 1));
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deref(x, d + 1)]));
+    return v;
+  };
+  const raw = O.filter((o) => o && typeof o === 'object' && !Array.isArray(o) && 'cid' in o && 'row' in o)
+    .map((o) => ({ cid: deref(o.cid), ...(deref(o.row) || {}) }))
+    .filter((r) => r.cid != null && typeof r.tier === 'number');
+  if (!raw.length) return null;
+  const byKey = await ddChampsByKey();
+  const out = [];
+  for (const r of raw) {
+    const c = byKey[String(r.cid)];
+    if (!c) continue;
+    out.push({
+      rank: out.length + 1,
+      slug: c.id.toLowerCase(),
+      name: c.name,
+      icon: `${ddBase}/img/champion/${c.id}.png`,
+      tier: TIER_ORDER[r.tier - 1] || 'D-',
+      lane: r.lane || null,
+      lanePct: r.pctLane ?? null,
+      win: r.wr ?? null,
+      delta: r.avgWrDelta ?? null,
+      pick: r.pr ?? null,
+      ban: r.br ?? null,
+      games: r.games ?? null,
+    });
+  }
+  return out.length ? out : null;
 }
 
 function tierIdx(t) {
@@ -239,15 +297,26 @@ function otpSlug(name) {
 
 let ddBase = 'https://ddragon.leagueoflegends.com/cdn/15.1.1';
 let ddMap = null;
+let ddByKey = null;
+async function loadDd() {
+  if (ddMap) return;
+  const v = await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json')).json();
+  if (v?.[0]) ddBase = `https://ddragon.leagueoflegends.com/cdn/${v[0]}`;
+  const cj = await (await fetch(`${ddBase}/data/en_US/champion.json`)).json();
+  const map = {}, byKey = {};
+  for (const k of Object.keys(cj.data)) {
+    map[k.toLowerCase()] = k;
+    byKey[String(cj.data[k].key)] = { id: k, name: cj.data[k].name };
+  }
+  ddMap = map; ddByKey = byKey;
+}
+async function ddChampsByKey() {
+  try { await loadDd(); } catch {}
+  return ddByKey || {};
+}
 async function champIcon(slug, name) {
   try {
-    if (!ddMap) {
-      const v = await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json')).json();
-      if (v?.[0]) ddBase = `https://ddragon.leagueoflegends.com/cdn/${v[0]}`;
-      const cj = await (await fetch(`${ddBase}/data/en_US/champion.json`)).json();
-      ddMap = {};
-      for (const k of Object.keys(cj.data)) ddMap[k.toLowerCase()] = k;
-    }
+    await loadDd();
     const id = ddMap[String(slug || '').toLowerCase()] || ddMap[String(name || '').toLowerCase().replace(/[^a-z]/g, '')];
     if (id) return `${ddBase}/img/champion/${id}.png`;
   } catch {}
@@ -260,9 +329,12 @@ async function load() {
   try {
     const res = await ipcRenderer.invoke('otp:tierlist', { lane, tier: tierBracket, patch: patchSel, region });
     if (!res || !res.ok) throw new Error(res?.error || 'fetch failed');
-    rows = parseTierHTML(res.html);
+    const htmlRows = parseTierHTML(res.html); // also sets patch / bracket / analysed
+    const qwikRows = await parseTierQwik(res.html).catch(() => null);
+    rows = qwikRows && qwikRows.length >= htmlRows.length ? qwikRows : htmlRows;
+    if (!patchSel) setPatchOptionsFrom(patch);
     if (!rows.length) throw new Error('empty');
-    for (const r of rows) r.icon = await champIcon(r.slug, r.name);
+    for (const r of rows) if (!r.icon) r.icon = await champIcon(r.slug, r.name);
     render();
   } catch (e) {
     tb.innerHTML = `<tr><td colspan="8" class="otp-empty">Could not load tier list (${esc(e?.message || e)}). <a href="https://lolalytics.com/lol/tierlist/" target="_blank" rel="noopener">Open on lolalytics.com →</a></td></tr>`;

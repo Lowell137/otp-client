@@ -236,6 +236,24 @@ async function extractActiveRunesFromDOM(runeNameMap, fallbackStats) {
   }
 }
 
+// ---- Patch selection ----
+// onetricks keys firstItemStats by "all", season ("16") and patch ("16.22").
+// Integer-like keys sort first in JS, so Object.keys()[0] is the whole-season
+// aggregate, not the current patch. Prefer the newest patch with a usable sample.
+const MIN_PATCH_GAMES = 30;
+function pickPatch(pp) {
+  const fis = pp.firstItemStats || {};
+  const stats = pp.patchStats || {};
+  const keys = Object.keys(fis);
+  const ver = (k) => k.split('.').map(Number);
+  const newer = (a, b) => { const x = ver(a), y = ver(b); return (y[0] - x[0]) || (y[1] - x[1]); };
+  const exact = keys.filter((k) => /^\d+\.\d+$/.test(k)).sort(newer);
+  const usable = exact.find((k) => stats[k] == null || stats[k] >= MIN_PATCH_GAMES);
+  if (usable) return usable;
+  const season = keys.filter((k) => /^\d+$/.test(k)).sort((a, b) => b - a)[0];
+  return season || (fis.all ? 'all' : keys[0]);
+}
+
 // ---- Build parser from pageProps ----
 function buildFromPageProps(pp, champion, selectedFirstKey = 'all', domRunes = null) {
   const champ = pp.champion || pp.key?.split('--')?.[0] || champion;
@@ -244,8 +262,7 @@ function buildFromPageProps(pp, champion, selectedFirstKey = 'all', domRunes = n
   const fis = pp.firstItemStats;
   if (!fis) return { error: 'No build data available for this champion' };
 
-  const patches = Object.keys(fis || {});
-  const patch = patches[0] || '16.18';
+  const patch = pickPatch(pp);
   const byFirst = fis[patch] || {};
 
   const firstKey = (selectedFirstKey && byFirst[selectedFirstKey])
@@ -933,6 +950,22 @@ function injectTierNav() {
   anchor.parentElement.appendChild(sb);
 }
 
+// The site's own "Tier List" is a PRO-gated popup trigger that React re-renders,
+// so an element-level onclick gets lost. Catch it at window capture, before React.
+function isTierNavTarget(t) {
+  const a = t && t.closest && t.closest('header a');
+  if (!a) return false;
+  return a.id === 'otp-tiernav' || /tier\s*list/i.test(a.textContent || '');
+}
+['pointerdown', 'mousedown', 'click'].forEach((type) => {
+  window.addEventListener(type, (e) => {
+    if (!isTierNavTarget(e.target)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (type === 'click') { try { ipcRenderer.send('otp:open-tier'); } catch {} }
+  }, true);
+});
+
 // If main already imported (fast auto import), skip own flow, just notify
 ipcRenderer.on('otp:auto-imported', (_e, info) => {
   if (!info) return;
@@ -993,7 +1026,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
     const needsHeader = isBuild && !document.getElementById('otp-header-actions');
     const needsFloat = !isBuild && !document.getElementById('otp-float-settings');
-    const needsTier = !document.getElementById('otp-tiernav') || !document.getElementById('otp-sumnav');
+    const needsTier = !!document.querySelector('header') &&
+      (!document.getElementById('otp-tiernav') || !document.getElementById('otp-sumnav'));
+    // The site re-renders its header (React), which drops our ids and the Summoner link.
+    if (needsHeader || needsFloat || needsTier) requestMountUI(80);
 
     // Also remove Get Pro button if it reappears
     const getProBtn = document.querySelector('a.get-pro-btn, .get-pro-btn');
