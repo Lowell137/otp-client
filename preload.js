@@ -915,8 +915,17 @@ function injectTierNav() {
         sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;display:inline-flex !important;align-items:center;white-space:nowrap;margin:0 0 0 12px !important;';
         sb.innerHTML = '<div style="color:var(--text);">Summoner</div>';
       } else {
-        sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;display:inline-flex !important;align-items:center;margin:0 0 0 12px;';
-        sb.innerHTML = '<div style="color:var(--text);display:inline-block;">Summoner</div>';
+        // Home page header: no flex gap, each item's inner div carries margin-right
+        // (20px today). Copy that spacing so Summoner doesn't touch Discover.
+        const sib = origTier.nextElementSibling || origTier.previousElementSibling;
+        const sibInner = sib && (sib.firstElementChild || sib);
+        const sp = (sibInner && parseFloat(getComputedStyle(sibInner).marginRight)) || 20;
+        const tierInner = origTier.firstElementChild;
+        if (tierInner && !parseFloat(getComputedStyle(tierInner).marginRight)) {
+          origTier.style.setProperty('margin-right', sp + 'px', 'important');
+        }
+        sb.style.cssText = 'color:var(--text);text-decoration:none;cursor:pointer;display:inline-flex !important;align-items:center;margin:0;';
+        sb.innerHTML = `<div style="color:var(--text);display:inline-block;margin-right:${sp}px;">Summoner</div>`;
       }
       origTier.after(sb);
     }

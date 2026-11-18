@@ -6,14 +6,28 @@ const LANES = [['all', 'All'], ['top', 'Top'], ['jungle', 'Jungle'], ['middle', 
 const TIERS = [['emerald_plus', 'Emerald+'], ['platinum_plus', 'Platinum+'], ['diamond_plus', 'Diamond+'], ['master_plus', 'Master+'], ['challenger', 'Challenger']];
 // Built from the patch lolalytics reports as current (it can lag Data Dragon by a patch),
 // so the list never goes stale: current + the 4 before it.
+// The live patch (Data Dragon) can be newer than lolalytics' default when a patch
+// has just shipped and has few games yet; list it too so it can be picked.
 let PATCH_OPTIONS = [['', 'Current']];
+let livePatch = '';
+async function loadLivePatch() {
+  try {
+    const v = await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json')).json();
+    const m = String(v?.[0] || '').match(/^(\d+)\.(\d+)/);
+    if (m) livePatch = `${m[1]}.${m[2]}`;
+  } catch {}
+}
 function setPatchOptionsFrom(cur) {
   const m = String(cur || '').match(/^(\d+)\.(\d+)/);
   if (!m) return;
-  const major = Number(m[1]);
+  let major = Number(m[1]);
+  let top = Number(m[2]);
+  const lm = livePatch.match(/^(\d+)\.(\d+)$/);
+  if (lm && Number(lm[1]) === major && Number(lm[2]) > top) top = Number(lm[2]);
   const list = [];
-  for (let minor = Number(m[2]); minor >= 1 && list.length < 5; minor--) list.push(`${major}.${minor}`);
-  const next = [['', 'Current'], ...list.map((p) => [p, p])];
+  for (let minor = top; minor >= 1 && list.length < 5; minor--) list.push(`${major}.${minor}`);
+  const label = (p) => (p === livePatch && p !== cur ? `${p} (new, few games)` : p);
+  const next = [['', `Current (${cur})`], ...list.map((p) => [p, label(p)])];
   if (JSON.stringify(next) === JSON.stringify(PATCH_OPTIONS)) return;
   PATCH_OPTIONS = next;
   const el = document.querySelector('#otp-patchsel');
@@ -329,6 +343,7 @@ async function load() {
   try {
     const res = await ipcRenderer.invoke('otp:tierlist', { lane, tier: tierBracket, patch: patchSel, region });
     if (!res || !res.ok) throw new Error(res?.error || 'fetch failed');
+    if (!livePatch) await loadLivePatch();
     const htmlRows = parseTierHTML(res.html); // also sets patch / bracket / analysed
     const qwikRows = await parseTierQwik(res.html).catch(() => null);
     rows = qwikRows && qwikRows.length >= htmlRows.length ? qwikRows : htmlRows;
