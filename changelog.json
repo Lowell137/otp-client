@@ -1,5 +1,19 @@
 [
   {
+    "version": "0.1.9",
+    "date": "2026-11-18",
+    "items": [
+      [
+        "Game clicks fixed",
+        "The spell timer overlay no longer blocks the game: it only takes clicks while the cursor is over the panel."
+      ],
+      [
+        "Current spell icons",
+        "Spell icons and cooldowns match the live game (e.g. Heal and Exhaust 240 s)."
+      ]
+    ]
+  },
+  {
     "version": "0.1.8",
     "date": "2026-11-18",
     "items": [
