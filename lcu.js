@@ -100,13 +100,22 @@ async function importRunes(creds, build) {
     const put = await reqJson(creds, 'PUT', `/lol-perks/v1/pages/${targetId}`, { ...payload, id: targetId });
     if (put.status < 400) {
       try { await reqJson(creds, 'PUT', '/lol-perks/v1/currentpage', targetId); } catch {}
+      await cleanupOtpPages(creds, targetId);
       return put.data;
     }
     putErr = put.raw.slice(0, 200);
   }
 
-  // 2) Free up space and try POST if no editable pages or PUT failed
-  if (editablePages.length >= 2 || pages.length >= 5) {
+  // 2) PUT failed (happens in champ select): make room and POST a new page.
+  // Remove our own OTP pages first; only if none exist fall back to another
+  // deletable page, as before.
+  const isOtp = (x) => typeof x.name === 'string' && x.name.startsWith('OTP ');
+  const otpDeletable = editablePages.filter((x) => isOtp(x) && x.isDeletable !== false);
+  if (otpDeletable.length) {
+    for (const x of otpDeletable) {
+      try { await reqJson(creds, 'DELETE', `/lol-perks/v1/pages/${x.id}`); } catch {}
+    }
+  } else if (editablePages.length >= 2 || pages.length >= 5) {
     const victim = editablePages.find((x) => x.isDeletable !== false && x.id !== targetId) ||
                    pages.find((x) => x.isDeletable === true);
     if (victim?.id) {
@@ -123,8 +132,24 @@ async function importRunes(creds, build) {
   }
   if (created.data?.id) {
     try { await reqJson(creds, 'PUT', '/lol-perks/v1/currentpage', created.data.id); } catch {}
+    await cleanupOtpPages(creds, created.data.id);
   }
   return created.data;
+}
+
+// Keep a single OTP rune page: delete every other page named "OTP …" that the
+// client allows deleting. User-made pages (other names) are never touched.
+async function cleanupOtpPages(creds, keepId) {
+  try {
+    const p = await reqJson(creds, 'GET', '/lol-perks/v1/pages');
+    const extra = (Array.isArray(p.data) ? p.data : []).filter((x) =>
+      x.id !== keepId && typeof x.name === 'string' && x.name.startsWith('OTP ') &&
+      x.isEditable !== false && !x.isPreset && x.isDeletable !== false);
+    for (const x of extra) {
+      try { await reqJson(creds, 'DELETE', `/lol-perks/v1/pages/${x.id}`); } catch {}
+    }
+    if (extra.length) console.log(`[otp] removed ${extra.length} old OTP rune page(s)`);
+  } catch {}
 }
 
 async function importItems(creds, build) {
