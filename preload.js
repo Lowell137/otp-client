@@ -711,7 +711,7 @@ function buildSettingsPopover() {
         <span class="otp-sw"></span>
       </div>
       <div class="otp-switch-row" data-k="overlay">
-        <span>In-Game Overlay</span>
+        <span>In-Game Spell Timers</span>
         <span class="otp-sw"></span>
       </div>
     </div>

@@ -7,9 +7,6 @@ app.commandLine.appendSwitch('disable-gpu-process-crash-limit');
 let win = null;
 let overlayWin = null;
 
-// OVERLAY GEÇİCİ KAPALI — kod silinmedi, sadece bu bayrakla devre dışı.
-// Yeniden açmak için false yap (ayarlardaki In-Game Overlay anahtarı o zaman çalışır).
-const OVERLAY_DISABLED = true;
 
 function initAdblock(sess) {
   // Block common tracking and advertising hosts at the network request level
@@ -349,7 +346,9 @@ function createOverlayWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'overlay-preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // own session: the main window's session-wide page preloads must not run here
+      partition: 'persist:otp-overlay'
     }
   });
   overlayWin.setIgnoreMouseEvents(true, { forward: true });
@@ -429,62 +428,61 @@ async function summonerSpellInfo(displayName, ddragon) {
   return fb ? { icon: fb[0], cd: fb[1] } : { icon: 'SummonerFlash', cd: 180 };
 }
 
-// Base ultimate cooldowns per champion (rank 1); user clicks the slot when the ult is used
-const ULT_CD = {
-  Aatrox: 120, Ahri: 130, Akali: 100, Akshan: 100, Alistar: 120, Ambessa: 120, Amumu: 130,
-  Anivia: 120, Annie: 120, Aphelios: 120, Ashe: 100, AurelionSol: 120, Aurora: 140, Azir: 120,
-  Bard: 110, Belveth: 180, Blitzcrank: 90, Brand: 120, Braum: 140, Briar: 120, Caitlyn: 90,
-  Camille: 120, Cassiopeia: 120, Chogath: 80, Corki: 12, Darius: 120, Diana: 100, DrMundo: 110,
-  Draven: 110, Ekko: 90, Elise: 120, Evelynn: 120, Ezreal: 120, Fiddlesticks: 140, Fiora: 110,
-  Fizz: 100, Galio: 180, Gangplank: 180, Garen: 120, Gnar: 120, Gragas: 100, Graves: 100,
-  Gwen: 120, Hecarim: 100, Heimerdinger: 130, Hwei: 0, Illaoi: 120, Irelia: 120, Ivern: 140,
-  Janna: 150, JarvanIV: 120, Jax: 80, Jayce: 0, Jhin: 120, Jinx: 90, KSante: 120, Kaisa: 110,
-  Kalista: 120, Karma: 70, Karthus: 200, Kassadin: 10, Katarina: 120, Kayle: 160, Kayn: 120,
-  Kennen: 120, Khazix: 100, Kindred: 120, Kled: 160, KogMaw: 40, Leblanc: 120, LeeSin: 90,
-  Leona: 90, Lillia: 130, Lissandra: 130, Lucian: 110, Lulu: 110, Lux: 80, Malphite: 130,
-  Malzahar: 140, Maokai: 120, MasterYi: 85, Mel: 120, Milio: 140, MissFortune: 120,
-  MonkeyKing: 130, Mordekaiser: 100, Morgana: 110, Naafiri: 90, Nami: 130, Nasus: 120,
-  Nautilus: 120, Neeko: 90, Nidalee: 100, Nilah: 100, Nocturne: 140, Nunu: 110, Olaf: 120,
-  Orianna: 110, Ornn: 140, Pantheon: 180, Poppy: 140, Pyke: 120, Qiyana: 120, Quinn: 100,
-  Rakan: 130, Rammus: 100, RekSai: 150, Rell: 130, Renata: 120, Renekton: 120, Rengar: 110,
-  Riven: 120, Rumble: 110, Ryze: 180, Samira: 110, Sejuani: 130, Senna: 160, Seraphine: 160,
-  Sett: 120, Shaco: 100, Shen: 200, Shyvana: 0, Singed: 120, Sion: 140, Sivir: 100,
-  Skarner: 100, Smolder: 120, Sona: 130, Soraka: 150, Swain: 100, Sylas: 100, Syndra: 100,
-  TahmKench: 120, Taliyah: 180, Talon: 100, Taric: 160, Teemo: 30, Thresh: 140, Tristana: 120,
-  Trundle: 100, Tryndamere: 110, TwistedFate: 180, Twitch: 90, Udyr: 0, Urgot: 100, Varus: 100,
-  Vayne: 100, Veigar: 120, Velkoz: 90, Vex: 120, Vi: 130, Viego: 120, Viktor: 120,
-  Vladimir: 130, Volibear: 120, Warwick: 110, Xayah: 120, Xerath: 80, XinZhao: 120,
-  Yasuo: 120, Yone: 120, Yorick: 160, Yunara: 120, Yuumi: 110, Zac: 130, Zed: 120,
-  Zeri: 100, Zer: 0, Ziggs: 120, Zilean: 120, Zoe: 60, Zyra: 130
-};
-
+// Enemy summoner spell timers only. Riot banned enemy ultimate timers in third-party
+// apps (13 March 2025, manual or automatic), so the overlay has none.
+// Ionian Boots of Lucidity (3158) give 10 summoner spell haste; items are public (Tab).
+const SUMMONER_HASTE_ITEMS = { 3158: 10 };
 async function buildOverlayPayload(data) {
   const ddragon = await ddragonBase();
-  const me = (data.allPlayers || []).find((p) => p.summonerName === data.activePlayer?.summonerName);
+  const meName = data.activePlayer?.riotId || data.activePlayer?.summonerName;
+  const me = (data.allPlayers || []).find((p) => (p.riotId || p.summonerName) === meName);
   const myTeam = me?.team || 'ORDER';
   const players = [];
   for (const p of data.allPlayers || []) {
-    if (!p.championName || !p.summonerName) continue;
+    if (!p.championName || p.team === myTeam) continue;
+    const id = p.riotId || p.summonerName || p.championName;
+    const haste = (p.items || []).reduce((h, it) => h + (SUMMONER_HASTE_ITEMS[it.itemID] || 0), 0);
     const s1 = p.summonerSpells?.summonerSpellOne?.displayName || 'Flash';
     const s2 = p.summonerSpells?.summonerSpellTwo?.displayName || 'Teleport';
     const [i1, i2] = await Promise.all([summonerSpellInfo(s1, ddragon), summonerSpellInfo(s2, ddragon)]);
+    const cd = (base) => Math.round(base * 100 / (100 + haste));
+    const champKey = String(p.rawChampionName || '').replace('game_character_displayname_', '') || p.championName.replace(/[^A-Za-z]/g, '');
     players.push({
-      id: p.summonerName,
-      name: p.summonerName,
-      champ: p.championName,
-      level: p.level || null,
-      team: p.team,
-      isEnemy: p.team !== myTeam,
-      isSelf: p.summonerName === data.activePlayer?.summonerName,
-      icon: `${ddragon}/img/champion/${p.championName}.png`,
+      id, name: p.riotIdGameName || p.summonerName || id, champ: p.championName, level: p.level || null,
+      position: p.position || '', haste,
+      icon: `${ddragon}/img/champion/${champKey}.png`,
       spells: [
-        { slot: 'D', name: s1, icon: `${ddragon}/img/spell/${i1.icon}.png`, cd: i1.cd },
-        { slot: 'F', name: s2, icon: `${ddragon}/img/spell/${i2.icon}.png`, cd: i2.cd }
+        { slot: 'D', name: s1, icon: `${ddragon}/img/spell/${i1.icon}.png`, cd: cd(i1.cd) },
+        { slot: 'F', name: s2, icon: `${ddragon}/img/spell/${i2.icon}.png`, cd: cd(i2.cd) },
       ],
-      ultCd: ULT_CD[p.championName] ?? 120
     });
   }
+  const order = { TOP: 0, JUNGLE: 1, MIDDLE: 2, BOTTOM: 3, UTILITY: 4 };
+  players.sort((a, b) => (order[a.position] ?? 9) - (order[b.position] ?? 9));
   return { players, gameTime: data.gameData?.gameTime ?? null };
+}
+
+// OTP_OVERLAY_DEMO=1: fake in-game data to work on the overlay without a game.
+const DEMO_T0 = Date.now();
+function demoGameData() {
+  const P = (riotId, championName, team, position, s1, s2, items = []) => ({
+    riotId, summonerName: riotId, riotIdGameName: riotId.split('#')[0], championName, team, position, level: 9,
+    rawChampionName: 'game_character_displayname_' + championName.replace(/[^A-Za-z]/g, ''),
+    items: items.map((itemID) => ({ itemID })),
+    summonerSpells: { summonerSpellOne: { displayName: s1 }, summonerSpellTwo: { displayName: s2 } },
+  });
+  return {
+    activePlayer: { riotId: 'Me#TR1', summonerName: 'Me#TR1' },
+    allPlayers: [
+      P('Me#TR1', 'Lucian', 'ORDER', 'BOTTOM', 'Flash', 'Heal'),
+      P('TopGuy#EUW', 'Darius', 'CHAOS', 'TOP', 'Flash', 'Teleport'),
+      P('Jgl#EUW', 'Hecarim', 'CHAOS', 'JUNGLE', 'Smite', 'Flash'),
+      P('Mid#EUW', 'Ahri', 'CHAOS', 'MIDDLE', 'Flash', 'Ignite', [3158]),
+      P('Adc#EUW', 'Jinx', 'CHAOS', 'BOTTOM', 'Flash', 'Cleanse'),
+      P('Sup#EUW', 'Thresh', 'CHAOS', 'UTILITY', 'Flash', 'Exhaust'),
+    ],
+    gameData: { gameTime: 734 + (Date.now() - DEMO_T0) / 1000 },
+  };
 }
 
 // Poll the Live Client: auto-show overlay in game, auto-hide when the game ends
@@ -493,16 +491,16 @@ let liveDbgCount = 0;
 async function liveTick() {
   liveDbgCount++;
   try {
-    const data = await liveGet('/liveclientdata/allgamedata');
+    const data = process.env.OTP_OVERLAY_DEMO === '1' ? demoGameData() : await liveGet('/liveclientdata/allgamedata');
     if (!data?.allPlayers?.length) throw new Error('no game');
     liveInGame = true;
     if (liveDbgCount % 10 === 1) {
       try {
         const dbgP = await buildOverlayPayload(data);
-        console.log(`[otp] liveDBG inGame ov=${!!flags.overlay} win=${overlayWin ? (overlayWin.isDestroyed() ? 'dead' : (overlayWin.isVisible() ? 'visible' : 'hidden')) : 'none'} n=${data.allPlayers.length} enemies=${dbgP.players.filter((p) => p.isEnemy).length} me=${data.activePlayer?.summonerName || '?'}`);
+        console.log(`[otp] liveDBG inGame ov=${!!flags.overlay} win=${overlayWin ? (overlayWin.isDestroyed() ? 'dead' : (overlayWin.isVisible() ? 'visible' : 'hidden')) : 'none'} n=${data.allPlayers.length} enemies=${dbgP.players.length} me=${data.activePlayer?.riotId || data.activePlayer?.summonerName || '?'}`);
       } catch (e) { console.log('[otp] liveDBG payload err: ' + (e?.message || e)); }
     }
-    if (OVERLAY_DISABLED || !flags.overlay) { hideOverlay(); return; }
+    if (!flags.overlay && process.env.OTP_OVERLAY_DEMO !== '1') { hideOverlay(); return; }
     showOverlay();
     if (overlayWin && !overlayWin.isDestroyed()) {
       const payload = await buildOverlayPayload(data);
@@ -725,7 +723,6 @@ app.whenReady().then(async () => {
   ipcMain.on('otp:settings', (_e, s) => {
     Object.assign(flags, s || {});
     lcu.setFlags(flags);
-    if (OVERLAY_DISABLED) flags.overlay = false; // geçici kapalı
     if (!flags.overlay) hideOverlay();
   });
   ipcMain.on('otp:open-tier', () => {
