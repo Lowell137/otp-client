@@ -32,6 +32,21 @@
     img.src = url;
   }
 
+  // Background blur in px (Wallpapers page slider), default 8.
+  let blur = 8;
+  try {
+    const v = Number(localStorage.getItem('otp.bgBlur'));
+    if (localStorage.getItem('otp.bgBlur') !== null && Number.isFinite(v)) blur = Math.max(0, Math.min(40, v));
+  } catch {}
+  document.body.style.setProperty('--otp-blur', blur + 'px');
+  // Darkening over the splash, 0.4–0.95 (Wallpapers page), default 0.86.
+  try {
+    const d = Number(localStorage.getItem('otp.bgDim'));
+    if (localStorage.getItem('otp.bgDim') !== null && Number.isFinite(d)) {
+      document.body.style.setProperty('--otp-dim', String(Math.max(0.4, Math.min(0.95, d))));
+    }
+  } catch {}
+
   const mine = saved();
   apply(mine.length ? mine : DEFAULTS);
 })();

@@ -16,6 +16,18 @@
   color-scheme: dark;
 }
 html { background: var(--bg); }
+/* Splash background lives on its own fixed layer so it can be blurred
+   (--otp-blur, set by bg.js from the Wallpapers page) without blurring content.
+   Inset is negative so blurred edges don't show a light rim. */
+body { background: transparent !important; }
+body::before {
+  content: ''; position: fixed; inset: calc(var(--otp-blur, 8px) * -2); z-index: -1; pointer-events: none;
+  background:
+    linear-gradient(rgba(24, 26, 27, var(--otp-dim, 0.86)), rgba(24, 26, 27, min(0.98, calc(var(--otp-dim, 0.86) + 0.1)))),
+    var(--otp-splash, none) center top / cover no-repeat;
+  background-color: var(--bg);
+  filter: blur(var(--otp-blur, 8px));
+}
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif !important;
 }

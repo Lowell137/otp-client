@@ -18,6 +18,11 @@
   #top h1 { font-size: 20px; margin: 0; font-weight: 700; }
   #top .sub { color: var(--lightText); font-size: 12px; }
 
+  #blurrow { display: flex; align-items: center; gap: 12px; margin: 14px 0 0; padding: 10px 14px; width: fit-content;
+    background: var(--fg); border: 1px solid var(--border-light); border-radius: 10px; }
+  #blurrow label { font-weight: 600; font-size: 12.5px; }
+  #blurrow input { width: 220px; accent-color: var(--blue); cursor: pointer; }
+  #blurv { color: var(--lightText); font-size: 12px; min-width: 34px; font-variant-numeric: tabular-nums; }
   .sec { margin: 18px 0 10px; display: flex; align-items: center; gap: 10px; }
   .sec h2 { margin: 0; font-size: 14px; font-weight: 700; }
   .sec .count { color: var(--mute); font-size: 12px; }
@@ -66,6 +71,15 @@
 <body data-page="wallpapers">
 <div id="wrap">
   <div id="top"><h1>Wallpapers</h1><span class="sub">Background for Tier List and Summoner. One of your saved splash arts is picked on each visit.</span></div>
+
+  <div id="blurrow">
+    <label for="blur">Background blur</label>
+    <input type="range" id="blur" min="0" max="40" step="1">
+    <span id="blurv"></span>
+    <label for="dim" style="margin-left:14px">Darkness</label>
+    <input type="range" id="dim" min="40" max="95" step="1">
+    <span id="dimv"></span>
+  </div>
 
   <div class="sec"><h2>Saved</h2><span class="count" id="count"></span><button class="btn" id="clear">Clear all</button></div>
   <div id="saved"></div>
@@ -164,6 +178,31 @@
     const el = e.target.closest('.sk');
     if (el) toggle(el.dataset.k);
   });
+
+  // Blur slider: live on this page, saved for every local page (bg.js reads it).
+  const blurIn = $('#blur');
+  let blurNow = 8;
+  try { const v = localStorage.getItem('otp.bgBlur'); if (v !== null && Number.isFinite(Number(v))) blurNow = Number(v); } catch {}
+  blurIn.value = blurNow;
+  $('#blurv').textContent = blurNow + ' px';
+  blurIn.oninput = () => {
+    const v = Number(blurIn.value);
+    document.body.style.setProperty('--otp-blur', v + 'px');
+    $('#blurv').textContent = v + ' px';
+    try { localStorage.setItem('otp.bgBlur', String(v)); } catch {}
+  };
+
+  const dimIn = $('#dim');
+  let dimNow = 0.86;
+  try { const v = localStorage.getItem('otp.bgDim'); if (v !== null && Number.isFinite(Number(v))) dimNow = Number(v); } catch {}
+  dimIn.value = Math.round(dimNow * 100);
+  $('#dimv').textContent = Math.round(dimNow * 100) + '%';
+  dimIn.oninput = () => {
+    const v = Number(dimIn.value) / 100;
+    document.body.style.setProperty('--otp-dim', String(v));
+    $('#dimv').textContent = dimIn.value + '%';
+    try { localStorage.setItem('otp.bgDim', String(v)); } catch {}
+  };
 
   renderSaved();
   otpWall.champs().then((list) => {
