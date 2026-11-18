@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.1.10",
+    "date": "2026-11-18",
+    "items": [
+      [
+        "Tidier tier list",
+        "Column headers line up with their values (Win %, Pick %, Ban %, Games)."
+      ]
+    ]
+  },
+  {
     "version": "0.1.9",
     "date": "2026-11-18",
     "items": [
