@@ -584,7 +584,7 @@ async function liveTick() {
         console.log(`[otp] liveDBG inGame ov=${!!flags.overlay} win=${overlayWin ? (overlayWin.isDestroyed() ? 'dead' : (overlayWin.isVisible() ? 'visible' : 'hidden')) : 'none'} n=${data.allPlayers.length} enemies=${dbgP.players.length} me=${data.activePlayer?.riotId || data.activePlayer?.summonerName || '?'}`);
       } catch (e) { console.log('[otp] liveDBG payload err: ' + (e?.message || e)); }
     }
-    if (!flags.overlay && process.env.OTP_OVERLAY_DEMO !== '1') { hideOverlay(); return; }
+    if (process.env.OTP_NO_OVERLAY === '1' || (!flags.overlay && process.env.OTP_OVERLAY_DEMO !== '1')) { hideOverlay(); return; } // OTP_NO_OVERLAY: dev runs while a game is open
     showOverlay();
     if (overlayWin && !overlayWin.isDestroyed()) {
       const payload = await buildOverlayPayload(data);
@@ -600,7 +600,7 @@ function startLiveClientLoop() {
   setInterval(liveTick, 3000);
   // Follow the game window quickly (alt-tab, move, resize) between the 3 s data polls.
   setInterval(() => {
-    if (!liveInGame || (!flags.overlay && process.env.OTP_OVERLAY_DEMO !== '1')) return;
+    if (!liveInGame || process.env.OTP_NO_OVERLAY === '1' || (!flags.overlay && process.env.OTP_OVERLAY_DEMO !== '1')) return;
     try { showOverlay(); } catch {}
   }, 300);
 }
@@ -639,17 +639,56 @@ let overlayDragging = false;
 // ---- Auto update (GitHub releases of Lowell137/otp-client via electron-updater) ----
 // Packaged builds only. Checks on start and every 4 hours, downloads in the
 // background, then asks to restart; "Later" installs on the next quit.
+// The state is pushed to the pages ('otp:update-state') for the settings menu
+// ("Check for updates") and the round progress badge.
+let updState = { state: 'idle' };
+let updater = null;
+function setUpdState(s) {
+  updState = { ...s, current: app.getVersion() };
+  if (win && !win.isDestroyed()) win.webContents.send('otp:update-state', updState);
+}
+ipcMain.handle('otp:update-get', () => ({ ...updState, current: app.getVersion() }));
+ipcMain.handle('otp:update-check', async () => {
+  if (!updater) { setUpdState({ state: app.isPackaged ? 'error' : 'dev', message: app.isPackaged ? 'Updater unavailable' : 'Updates work in the installed app only' }); return updState; }
+  if (updState.state === 'downloading' || updState.state === 'ready') return updState;
+  try { await updater.checkForUpdates(); } catch (e) { setUpdState({ state: 'error', message: String(e?.message || e).slice(0, 120) }); }
+  return updState;
+});
+ipcMain.on('otp:update-install', () => { if (updater && updState.state === 'ready') setImmediate(() => updater.quitAndInstall(false, true)); });
+
 function setupAutoUpdate() {
-  if (!app.isPackaged) return;
+  if (!app.isPackaged) {
+    // OTP_UPDATE_DEMO=1 (dev only): fake checking -> downloading 0..100% -> ready.
+    if (process.env.OTP_UPDATE_DEMO === '1') {
+      setTimeout(() => setUpdState({ state: 'checking' }), 3000);
+      let p = 0;
+      setTimeout(() => {
+        const t = setInterval(() => {
+          p += 7;
+          if (p >= 100) { clearInterval(t); setUpdState({ state: 'ready', version: '9.9.9', percent: 100 }); }
+          else setUpdState({ state: 'downloading', version: '9.9.9', percent: p });
+        }, 400);
+      }, 5000);
+    }
+    return;
+  }
   let autoUpdater;
   try { ({ autoUpdater } = require('electron-updater')); } catch (e) {
     console.warn('[otp] updater unavailable:', e?.message || e);
     return;
   }
+  updater = autoUpdater;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.on('error', (e) => console.warn('[otp] update error:', e?.message || e));
-  autoUpdater.on('update-available', (i) => console.log('[otp] update available:', i?.version));
+  autoUpdater.on('checking-for-update', () => { if (updState.state !== 'downloading' && updState.state !== 'ready') setUpdState({ state: 'checking' }); });
+  autoUpdater.on('update-not-available', () => setUpdState({ state: 'none', checkedAt: Date.now() }));
+  autoUpdater.on('error', (e) => {
+    console.warn('[otp] update error:', e?.message || e);
+    if (updState.state !== 'ready') setUpdState({ state: 'error', message: String(e?.message || e).slice(0, 120) });
+  });
+  autoUpdater.on('update-available', (i) => { console.log('[otp] update available:', i?.version); setUpdState({ state: 'downloading', version: i?.version, percent: 0 }); });
+  autoUpdater.on('download-progress', (p) => setUpdState({ state: 'downloading', version: updState.version, percent: Math.max(0, Math.min(100, Math.round(p?.percent || 0))) }));
+  autoUpdater.on('update-downloaded', (info) => setUpdState({ state: 'ready', version: info?.version || updState.version, percent: 100 }));
   let asked = false;
   autoUpdater.on('update-downloaded', async (info) => {
     if (asked || !win || win.isDestroyed()) return;

@@ -105,3 +105,16 @@ html::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.28); }
    non-empty list. This 1 px drag anchor (bottom-left corner) makes local pages
    report one, which replaces the site's stale header regions. */
 #otp-drag-anchor { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; -webkit-app-region: drag; pointer-events: none; z-index: 1; }
+
+/* Round update badge (same look as on the site pages) */
+#otp-upd-ring { position: fixed; right: 18px; bottom: 18px; z-index: 60; width: 40px; height: 40px; border-radius: 50%;
+  background: #181a1b; box-shadow: 0 6px 20px rgba(0,0,0,0.55); display: none; align-items: center; justify-content: center; }
+#otp-upd-ring.show { display: flex; }
+#otp-upd-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+#otp-upd-ring .trk { stroke: #323538; }
+#otp-upd-ring .bar { stroke: #1063b7; transition: stroke-dashoffset .3s ease; }
+#otp-upd-ring span { position: relative; font-size: 10.5px; font-weight: 800; color: #e8e6e3; font-variant-numeric: tabular-nums; }
+#otp-upd-ring.ready { cursor: pointer; }
+#otp-upd-ring.ready .bar { stroke: #3fb950; }
+#otp-upd-ring.checking .bar { stroke-dasharray: 30 200 !important; animation: otpspin 1s linear infinite; transform-origin: 50% 50%; }
+@keyframes otpspin { to { transform: rotate(360deg); } }

@@ -515,6 +515,34 @@ a.get-pro-btn, .get-pro-btn { display: none !important; }
   padding: 6px 8px 2px; font-size: 11px;
   color: #8b93a8; min-height: 14px;
 }
+
+/* Updates section in the settings menu */
+.otp-upd { padding: 8px 8px 6px; border-top: 1px solid rgb(50,53,56); }
+.otp-upd-row { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 500; }
+.otp-upd-row .v { color: #8b93a8; font-weight: 400; font-size: 11px; }
+#otp-upd-status { font-size: 11px; color: #c2baaf; margin: 4px 0 7px; min-height: 13px; }
+#otp-upd-status.err { color: #f87171; }
+#otp-upd-status.ok { color: #3fb950; }
+.otp-upd-btn { width: 100%; height: 26px; border-radius: 5px; border: 1px solid rgb(85,85,85); background: rgb(33,35,36);
+  color: #e8e6e3; font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.otp-upd-btn:hover:not(:disabled) { border-color: #aaa; }
+.otp-upd-btn:disabled { opacity: .55; cursor: default; }
+.otp-upd-btn.go { background: rgb(16,99,183); border-color: rgb(16,99,183); color: #fff; }
+
+/* Update progress lives on the floating gear: rim = progress ring, icon -> % / ↻ */
+#otp-float-settings .otp-gear { position: relative; overflow: visible; }
+.otp-upd-ring { position: absolute; left: -4px; top: -4px; pointer-events: none; transform: rotate(-90deg); opacity: 0; transition: opacity .2s; }
+.otp-gear.upd .otp-upd-ring { opacity: 1; }
+.otp-upd-ring .trk { stroke: rgb(50,53,56); }
+.otp-upd-ring .bar { stroke: rgb(16,99,183); transition: stroke-dashoffset .3s ease; }
+.otp-gear.upd-ready .otp-upd-ring .bar { stroke: #3fb950; }
+.otp-gear.upd-checking .otp-upd-ring .bar { stroke-dasharray: 34 200 !important; animation: otpspin 1s linear infinite; transform-origin: 23px 23px; }
+.otp-gear-icon { display: inline-flex; }
+.otp-gear-pct { display: none; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.otp-gear.upd-dl .otp-gear-icon { display: none; }
+.otp-gear.upd-dl .otp-gear-pct { display: inline; }
+.otp-gear.upd-ready .otp-gear-pct { font-size: 16px; color: #3fb950; }
+@keyframes otpspin { to { transform: rotate(360deg); } }
 `;
 
 // ---- State ----
@@ -636,20 +664,9 @@ function injectHeaderActions() {
   importBtn.appendChild(importText);
   importBtn.onclick = () => doImport(false);
 
-  // Gear button
-  const gearBtn = document.createElement('button');
-  gearBtn.id = 'otp-gear-btn';
-  gearBtn.className = 'otp-gear';
-  gearBtn.title = 'Settings';
-  gearBtn.innerHTML = GEAR_SVG;
-  gearBtn.onclick = (e) => { e.stopPropagation(); togglePopover(); };
-
-  // Settings popover (shared builder — also used by floating settings on other pages)
-  const popover = buildSettingsPopover();
-
+  // Settings live only in the bottom-right floating button now (on every page);
+  // a second popover here shared its id and removed the other one.
   bar.appendChild(importBtn);
-  bar.appendChild(gearBtn);
-  bar.appendChild(popover);
   champBox.appendChild(bar);
 
   // Vertical align: center the button group with the h1 title
@@ -724,8 +741,20 @@ function buildSettingsPopover() {
         </div>
       </div>
     </div>
+    <div class="otp-upd">
+      <div class="otp-upd-row"><span>Updates</span><span class="v" id="otp-upd-ver"></span></div>
+      <div id="otp-upd-status"></div>
+      <button type="button" class="otp-upd-btn" id="otp-upd-btn">Check for updates</button>
+    </div>
     <div id="otp-log" class="otp-popover-log"></div>
   `;
+  const updBtn = popover.querySelector('#otp-upd-btn');
+  updBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (updInfo.state === 'ready') { ipcRenderer.send('otp:update-install'); return; }
+    paintUpdate({ ...updInfo, state: 'checking' });
+    ipcRenderer.invoke('otp:update-check').then((s) => { if (s) paintUpdate(s); }).catch(() => {});
+  };
   popover.querySelectorAll('.otp-switch-row').forEach(r => {
     r.onclick = (e) => {
       e.stopPropagation();
@@ -748,26 +777,68 @@ function buildSettingsPopover() {
 }
 
 // ---- Floating settings button for non-build pages (homepage etc.) ----
+// Bottom-right settings button on every page (build pages too: the gear next to
+// Import scrolls away with the page).
 function injectFloatingSettings() {
-  const isBuildPage = location.pathname.includes('/champions/builds/');
   const existing = document.getElementById('otp-float-settings');
-  if (isBuildPage) {
-    if (existing) existing.remove();
-    return;
-  }
   if (existing) return;
   const wrap = document.createElement('div');
   wrap.id = 'otp-float-settings';
+  // The gear itself shows update progress: its rim becomes a progress ring and the
+  // icon turns into the percentage while downloading (↻ when ready).
   const gearBtn = document.createElement('button');
+  gearBtn.id = 'otp-float-gear';
   gearBtn.className = 'otp-gear';
   gearBtn.title = 'OTP Settings';
-  gearBtn.innerHTML = GEAR_SVG;
+  gearBtn.innerHTML = `<svg class="otp-upd-ring" viewBox="0 0 46 46" width="46" height="46"><circle class="trk" cx="23" cy="23" r="21" fill="none" stroke-width="2.5"/><circle class="bar" cx="23" cy="23" r="21" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="131.95" stroke-dashoffset="131.95"/></svg><span class="otp-gear-icon">${GEAR_SVG}</span><span class="otp-gear-pct"></span>`;
   gearBtn.onclick = (e) => { e.stopPropagation(); togglePopover(); };
   wrap.appendChild(gearBtn);
   wrap.appendChild(buildSettingsPopover());
   document.body.appendChild(wrap);
   updateClientStatusUI();
+  paintUpdate(updInfo);
 }
+
+// ---- Update state (main: 'otp:update-state') -> settings menu + round badge ----
+let updInfo = { state: 'idle' };
+function paintUpdate(s) {
+  updInfo = s || updInfo;
+  const st = updInfo.state;
+  const ver = document.getElementById('otp-upd-ver');
+  if (ver && updInfo.current) ver.textContent = 'v' + updInfo.current;
+  const status = document.getElementById('otp-upd-status');
+  const btn = document.getElementById('otp-upd-btn');
+  if (status && btn) {
+    const msg = {
+      idle: '', checking: 'Checking…', none: 'You have the latest version',
+      downloading: `Downloading v${updInfo.version || ''} · ${updInfo.percent || 0}%`,
+      ready: `v${updInfo.version || ''} is ready to install`,
+      error: 'Could not check: ' + (updInfo.message || 'unknown error'),
+      dev: updInfo.message || 'Updates work in the installed app only',
+    }[st] ?? '';
+    status.textContent = msg;
+    status.className = st === 'error' ? 'err' : (st === 'none' || st === 'ready') ? 'ok' : '';
+    btn.textContent = st === 'ready' ? 'Restart to update' : st === 'downloading' ? 'Downloading…' : st === 'checking' ? 'Checking…' : 'Check for updates';
+    btn.disabled = st === 'checking' || st === 'downloading';
+    btn.classList.toggle('go', st === 'ready');
+  }
+  const gear = document.getElementById('otp-float-gear');
+  if (gear) {
+    gear.classList.toggle('upd', st === 'checking' || st === 'downloading' || st === 'ready');
+    gear.classList.toggle('upd-ready', st === 'ready');
+    gear.classList.toggle('upd-checking', st === 'checking');
+    gear.classList.toggle('upd-dl', st === 'downloading' || st === 'ready');
+    const pct = st === 'ready' ? 100 : st === 'downloading' ? (updInfo.percent || 0) : 0;
+    const bar = gear.querySelector('.otp-upd-ring .bar');
+    if (bar && st !== 'checking') bar.setAttribute('stroke-dashoffset', String(131.95 * (1 - pct / 100)));
+    gear.querySelector('.otp-gear-pct').textContent = st === 'ready' ? '↻' : st === 'downloading' ? pct + '%' : '';
+    gear.title = st === 'ready' ? `Update v${updInfo.version || ''} ready: open settings to restart`
+      : st === 'downloading' ? `Downloading update v${updInfo.version || ''}: ${pct}%`
+      : st === 'checking' ? 'Checking for updates…' : 'OTP Settings';
+  }
+}
+ipcRenderer.on('otp:update-state', (_e, s) => paintUpdate(s));
+ipcRenderer.invoke('otp:update-get').then((s) => { if (s) paintUpdate(s); }).catch(() => {});
 
 // Close any open settings popover when clicking outside (registered once)
 if (!window._otpCloser) {
@@ -888,7 +959,9 @@ a[href*="discord"], .sidePanel{display:none !important}
 #otp-tiernav,#otp-sumnav{display:inline-flex !important;align-items:center !important;cursor:pointer !important}
 /* The site's header is the window title bar: drag on empty space, clickables stay
    clickable, and the right edge leaves room for the native min/max/close buttons. */
-header{-webkit-app-region:drag;user-select:none}
+/* Inner pages: <header> has no box of its own, its fixed <ul> is the bar, so the ul
+   needs the drag region too. */
+header,header>ul{-webkit-app-region:drag;user-select:none}
 header a,header button,header input,header [role],header [type="button"],header svg,header img,header select,header .IconButton{-webkit-app-region:no-drag}
 header>ul{padding-right:142px !important;box-sizing:border-box}
 /* Keep the header (= title bar) on top while scrolling. Inner pages already pin
@@ -1063,7 +1136,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     const needsHeader = isBuild && !document.getElementById('otp-header-actions');
-    const needsFloat = !isBuild && !document.getElementById('otp-float-settings');
+    const needsFloat = !document.getElementById('otp-float-settings');
     const needsTier = !!document.querySelector('header') &&
       (!document.getElementById('otp-tiernav') || !document.getElementById('otp-sumnav'));
     // The site re-renders its header (React), which drops our ids and the Summoner link.

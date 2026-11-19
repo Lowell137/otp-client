@@ -116,3 +116,27 @@
   h.addEventListener('pointercancel', stop);
   h.addEventListener('dblclick', (e) => { if (isEmpty(e.target)) send('max'); });
 })();
+
+// Round update badge (bottom-right) while an update is checked / downloading / ready.
+// State comes from the page's preload ('otp-update-state'); clicking when ready
+// restarts into the new version.
+(function () {
+  const ring = document.createElement('div');
+  ring.id = 'otp-upd-ring';
+  ring.innerHTML = '<svg viewBox="0 0 40 40" width="40" height="40"><circle class="trk" cx="20" cy="20" r="16" fill="none" stroke-width="3"/><circle class="bar" cx="20" cy="20" r="16" fill="none" stroke-width="3" stroke-linecap="round" stroke-dasharray="100.53" stroke-dashoffset="100.53"/></svg><span></span>';
+  document.body.appendChild(ring);
+  let state = {};
+  ring.addEventListener('click', () => { if (state.state === 'ready') window.dispatchEvent(new CustomEvent('otp-update-install')); });
+  window.addEventListener('otp-update-state', (e) => {
+    try { state = JSON.parse(e.detail || '{}'); } catch { return; }
+    const st = state.state;
+    ring.classList.toggle('show', st === 'checking' || st === 'downloading' || st === 'ready');
+    ring.classList.toggle('ready', st === 'ready');
+    ring.classList.toggle('checking', st === 'checking');
+    const pct = st === 'ready' ? 100 : st === 'downloading' ? (state.percent || 0) : 0;
+    if (st !== 'checking') ring.querySelector('.bar').setAttribute('stroke-dashoffset', String(100.53 * (1 - pct / 100)));
+    ring.querySelector('span').textContent = st === 'ready' ? '↻' : st === 'downloading' ? pct + '%' : '';
+    ring.title = st === 'ready' ? 'Update v' + (state.version || '') + ' ready: click to restart and install'
+      : st === 'downloading' ? 'Downloading update v' + (state.version || '') + ': ' + pct + '%' : 'Checking for updates…';
+  });
+})();

@@ -859,3 +859,10 @@ document.addEventListener('otp-win-drag', (e) => {
   const phase = e && e.detail;
   if (typeof phase === 'string') ipcRenderer.send('otp:win-drag', phase);
 });
+
+// Update progress badge (shell.js draws it): forward main's update state to the page
+// and the page's "install" click back to main.
+const fwdUpdate = (s) => { try { window.dispatchEvent(new CustomEvent('otp-update-state', { detail: JSON.stringify(s || {}) })); } catch {} };
+ipcRenderer.on('otp:update-state', (_e, s) => fwdUpdate(s));
+window.addEventListener('DOMContentLoaded', () => { ipcRenderer.invoke('otp:update-get').then(fwdUpdate).catch(() => {}); });
+window.addEventListener('otp-update-install', () => ipcRenderer.send('otp:update-install'));
