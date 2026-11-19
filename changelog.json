@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.1.11",
+    "date": "2026-11-19",
+    "items": [
+      [
+        "Check for updates",
+        "Settings has a new Updates section: see your version and check for updates yourself."
+      ],
+      [
+        "Update progress on the gear",
+        "While an update downloads, the settings button turns into a progress ring with the percentage; green means ready, restart from Settings."
+      ],
+      [
+        "Settings everywhere",
+        "The settings button is now on every onetricks page, including champion builds."
+      ],
+      [
+        "Move the window from build pages",
+        "The header on champion build pages can be used to drag the window again."
+      ]
+    ]
+  },
+  {
     "version": "0.1.10",
     "date": "2026-11-18",
     "items": [
