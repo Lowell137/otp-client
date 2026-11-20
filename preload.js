@@ -875,6 +875,7 @@ function mountUI() {
   injectFloatingSettings();
   injectTierNav();
   checkPendingAutoImport();
+  renderLobbyPanel();
 }
 
 // ---- Instant Auto-Import on any rune / set / filter selection ----
@@ -884,7 +885,7 @@ document.addEventListener('click', (e) => {
   if (!target) return;
 
   // Ignore clicks inside our own header bar, floating settings, or popover
-  if (target.closest('#otp-header-actions') || target.closest('#otp-float-settings') || target.closest('.otp-popover')) return;
+  if (target.closest('#otp-header-actions') || target.closest('#otp-float-settings') || target.closest('.otp-popover') || target.closest('#otp-lobby')) return;
 
   if (!location.pathname.includes('/champions/builds/')) return;
 
@@ -1099,6 +1100,201 @@ ipcRenderer.on('otp:auto-imported', (_e, info) => {
   }
 });
 
+// ---- Lobby panel (build pages): players in champ select / the live game ----
+// State comes from main (lobby.js, 'otp:lobby-state'). Shows rank and recent games
+// on the current pick for both teams; an enemy row opens this build vs that
+// champion (?matchup=), "Vs their team" fills onetricks' advanced search with both
+// comps (adv_e* / adv_a*).
+let lobbyState = null;
+const LOBBY_ROLES = ['top', 'jungle', 'mid', 'bot', 'supp'];
+const ROLE_LABEL = { top: 'Top', jungle: 'Jg', mid: 'Mid', bot: 'Bot', supp: 'Sup' };
+const ADV_SUFFIX = { top: 'top', jungle: 'jg', mid: 'mid', bot: 'bot', supp: 'supp' };
+const RANK_COLOR = { IRON: '#8c7b72', BRONZE: '#b0816d', SILVER: '#9fb0bb', GOLD: '#d6a64b', PLATINUM: '#4fb3a9', EMERALD: '#2fb96b', DIAMOND: '#6c95f2', MASTER: '#b866dc', GRANDMASTER: '#e0605a', CHALLENGER: '#f0c75e' };
+const DIV_NUM = { I: '1', II: '2', III: '3', IV: '4' };
+const LOBBY_CSS = `
+#otp-lobby{background:var(--fg,#212324);border:1px solid var(--border-light,#2c2f31);border-radius:10px;padding:14px 16px 12px;margin:0 0 16px;color:var(--text,#e8e6e3);font-size:13px;box-sizing:border-box}
+#otp-lobby .lb-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+#otp-lobby .lb-title{font-weight:700;font-size:15px}
+#otp-lobby .lb-sub{color:var(--lightText,#c2baaf);font-size:12px}
+#otp-lobby .lb-live{width:8px;height:8px;border-radius:50%;background:#2fb96b;box-shadow:0 0 0 3px rgba(47,185,107,.18)}
+#otp-lobby .lb-acts{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+#otp-lobby .lb-btn{background:var(--fg-raised,#2c2e2f);border:1px solid var(--border-light,#2c2f31);color:var(--text,#e8e6e3);border-radius:8px;padding:6px 11px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+#otp-lobby .lb-btn:hover{background:var(--hover,#1b1d1e);border-color:var(--border,#656e73)}
+#otp-lobby .lb-btn.primary{background:var(--blue,#1063b7);border-color:var(--blue,#1063b7);color:#fff}
+#otp-lobby .lb-btn.primary:hover{filter:brightness(1.1)}
+#otp-lobby .lb-pro{background:#6d3fd1;color:#fff;border-radius:4px;padding:0 5px;font-size:10px;font-weight:800;letter-spacing:.04em}
+#otp-lobby .lb-btn img{width:16px;height:16px;border-radius:4px}
+#otp-lobby .lb-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:900px){#otp-lobby .lb-cols{grid-template-columns:1fr}}
+#otp-lobby .lb-col h4{margin:0 0 6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700}
+#otp-lobby .lb-col.enemy h4{color:#e0605a}
+#otp-lobby .lb-col.ally h4{color:#4f9be8}
+#otp-lobby .lb-row{display:grid;grid-template-columns:30px 34px minmax(0,1fr) auto;align-items:center;gap:9px;padding:5px 8px;border-radius:8px;border:1px solid transparent}
+#otp-lobby .lb-row+.lb-row{margin-top:2px}
+#otp-lobby .lb-row.me{background:rgba(16,99,183,.14);border-color:rgba(16,99,183,.35)}
+#otp-lobby .lb-col.enemy .lb-row[data-vs]{cursor:pointer}
+#otp-lobby .lb-col.enemy .lb-row[data-vs]:hover{background:var(--hover,#1b1d1e);border-color:var(--border-light,#2c2f31)}
+#otp-lobby .lb-row.on,#otp-lobby .lb-col.enemy .lb-row.on:hover{background:rgba(224,96,90,.12);border-color:rgba(224,96,90,.45)}
+#otp-lobby .lb-role{font-size:11px;color:var(--lightText,#c2baaf);font-weight:600;text-align:center}
+#otp-lobby .lb-ic{width:34px;height:34px;border-radius:8px;background:#151617;display:block;object-fit:cover}
+#otp-lobby .lb-ic.none{border:1px dashed var(--border,#656e73);box-sizing:border-box}
+#otp-lobby .lb-who{min-width:0}
+#otp-lobby .lb-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#otp-lobby .lb-name .tag{color:var(--lightText,#c2baaf);font-weight:400}
+#otp-lobby .lb-name.hidden{color:var(--lightText,#c2baaf);font-style:italic;font-weight:400}
+#otp-lobby .lb-rank{font-size:12px;color:var(--lightText,#c2baaf);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#otp-lobby .lb-rank b{font-weight:700}
+#otp-lobby .lb-stat{text-align:right;font-size:12px;white-space:nowrap}
+#otp-lobby .lb-stat .g{color:var(--lightText,#c2baaf)}
+#otp-lobby .lb-b{margin-top:3px}
+#otp-lobby .lb-badge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;vertical-align:1px}
+#otp-lobby .lb-badge.otp{background:#f5c518;color:#1b1b1b}
+#otp-lobby .lb-badge.first{background:var(--fg-raised,#2c2e2f);color:var(--lightText,#c2baaf);border:1px solid var(--border-light,#2c2f31)}
+#otp-lobby .wr-hi{color:#2fb96b}
+#otp-lobby .wr-lo{color:#e0605a}
+#otp-lobby .lb-note{margin-top:8px;font-size:11px;color:var(--lightText,#c2baaf)}
+`;
+
+function lobbyChampOfPage() {
+  const m = location.pathname.match(/\/champions\/builds\/([^/?#]+)/i);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+let lobbyDdVer = '16.23.1';
+(async () => {
+  try {
+    const c = JSON.parse(localStorage.getItem('otp.ddver') || 'null');
+    if (c && Date.now() - c.ts < 86400000) { lobbyDdVer = c.v; return; }
+    const v = (await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json')).json())[0];
+    if (v) { lobbyDdVer = v; localStorage.setItem('otp.ddver', JSON.stringify({ ts: Date.now(), v })); }
+  } catch {}
+})();
+function lobbyIcon(champ) {
+  return champ ? `https://ddragon.leagueoflegends.com/cdn/${lobbyDdVer}/img/champion/${champ}.png` : '';
+}
+const lobbyEsc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function lobbyRankText(r) {
+  if (!r) return '<span>Unranked</span>';
+  const t = r.tier.charAt(0) + r.tier.slice(1).toLowerCase();
+  const apex = /MASTER|GRANDMASTER|CHALLENGER/.test(r.tier);
+  const g = r.wins + r.losses;
+  const wr = g ? Math.round((r.wins / g) * 100) : null;
+  return `<b style="color:${RANK_COLOR[r.tier] || 'inherit'}">${t}${apex ? '' : ' ' + (DIV_NUM[r.division] || r.division || '')}</b> ${r.lp} LP`
+    + (wr != null ? ` · <span class="${wr >= 53 ? 'wr-hi' : wr <= 47 ? 'wr-lo' : ''}">${wr}%</span> <span class="g">(${g})</span>` : '');
+}
+function lobbyStatText(p) {
+  const rc = p.recent;
+  if (!rc || !p.champ) return "";
+  const badge = rc.otp ? `<span class="lb-badge otp" title="Most of their last ${rc.total} games are on this champion">OTP</span>`
+    : rc.first ? `<span class="lb-badge first" title="No games on this champion in their last ${rc.total}">1st time</span>` : "";
+  const wr = rc.games ? Math.round((rc.wins / rc.games) * 100) : null;
+  const top = rc.games
+    ? `<span class="${wr >= 55 ? "wr-hi" : wr <= 45 ? "wr-lo" : ""}">${wr}%</span> <span class="g">${rc.games}/${rc.total}</span>`
+    : `<span class="g">0/${rc.total}</span>`;
+  return `<div>${top}</div>${badge ? `<div class="lb-b">${badge}</div>` : ""}`;
+}
+
+function lobbySort(list) {
+  const idx = (r) => { const i = LOBBY_ROLES.indexOf(r); return i < 0 ? 9 : i; };
+  return [...list].sort((a, b) => idx(a.role) - idx(b.role));
+}
+function lobbyBuildUrl(params) {
+  const champ = lobbyChampOfPage() || lobbyState?.me?.champ;
+  if (!champ) return null;
+  const s = new URLSearchParams(params).toString();
+  return `/champions/builds/${encodeURIComponent(champ)}${s ? '?' + s : ''}`;
+}
+function lobbyGo(url) { if (url && url !== location.pathname + location.search) location.assign(url); }
+
+function renderLobbyPanel() {
+  const isBuild = location.pathname.includes('/champions/builds/');
+  let panel = document.getElementById('otp-lobby');
+  const st = lobbyState;
+  if (!isBuild || !st || !(st.allies?.length || st.enemies?.length)) { panel?.remove(); return; }
+  if (!document.getElementById('otp-lobby-css')) {
+    const s = document.createElement('style');
+    s.id = 'otp-lobby-css';
+    s.textContent = LOBBY_CSS;
+    document.head.appendChild(s);
+  }
+  // Above the champion header card (the rounded card that holds the page's <h1>).
+  const h1 = document.querySelector('h1');
+  if (!h1) return;
+  let card = h1;
+  while (card.parentElement && card.parentElement !== document.body) {
+    if (parseFloat(getComputedStyle(card).borderTopLeftRadius) >= 6 && card.getBoundingClientRect().width > 500) break;
+    card = card.parentElement;
+  }
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'otp-lobby';
+    panel.addEventListener('click', onLobbyClick);
+  }
+  if (panel.nextElementSibling !== card) card.before(panel);
+
+  const params = new URLSearchParams(location.search);
+  const myRole = st.me?.role || '';
+  const curMatchup = (params.get('matchup') || params.get('adv_e' + (ADV_SUFFIX[myRole] || 'x')) || '').toLowerCase();
+  const opp = myRole ? (st.enemies || []).find((e) => e.role === myRole && e.champ) : null;
+  const advCount = [...(st.enemies || []), ...(st.allies || []).filter((a) => !a.me)].filter((p) => p.champ && ADV_SUFFIX[p.role]).length;
+
+  const row = (p, side) => {
+    const on = side === 'enemy' && p.champ && p.champ.toLowerCase() === curMatchup;
+    const name = p.hidden
+      ? `<div class="lb-name hidden">${p.me ? 'You' : 'Hidden in champ select'}</div>`
+      : `<div class="lb-name">${lobbyEsc(p.name)}${p.tag ? `<span class="tag"> #${lobbyEsc(p.tag)}</span>` : ''}</div>`;
+    const vs = side === 'enemy' && p.champ ? ` data-vs="${lobbyEsc(p.champ)}" title="${on ? 'Showing this matchup' : 'Build vs ' + lobbyEsc(p.champ)}"` : '';
+    return `<div class="lb-row${p.me ? ' me' : ''}${on ? ' on' : ''}"${vs}>
+      <div class="lb-role">${ROLE_LABEL[p.role] || ''}</div>
+      ${p.champ ? `<img class="lb-ic" src="${lobbyIcon(p.champ)}" alt="">` : '<div class="lb-ic none"></div>'}
+      <div class="lb-who">${name}<div class="lb-rank">${p.hidden ? '' : lobbyRankText(p.rank)}</div></div>
+      <div class="lb-stat">${lobbyStatText(p)}</div>
+    </div>`;
+  };
+  const hiddenAllies = (st.allies || []).some((a) => a.hidden && !a.me);
+  const oppOn = opp && curMatchup === opp.champ.toLowerCase();
+  panel.innerHTML = `
+    <div class="lb-head">
+      <span class="lb-live"></span>
+      <span class="lb-title">${st.phase === 'InGame' ? 'Live game' : 'Champion select'}</span>
+      <span class="lb-sub">Rank, and win rate / games on their pick in the last 20</span>
+      <div class="lb-acts">
+        ${opp ? `<button class="lb-btn${oppOn ? '' : ' primary'}" data-vs="${lobbyEsc(opp.champ)}"><img src="${lobbyIcon(opp.champ)}" alt="">Build vs ${lobbyEsc(opp.champ)}</button>` : ''}
+        ${advCount ? '<button class="lb-btn" data-adv="1" title="Fills onetricks Advanced Search with both team comps. Running the search needs onetricks Pro.">Vs their team <span class="lb-pro">PRO</span></button>' : ''}
+        ${/[?&](matchup|adv_)/.test(location.search) ? '<button class="lb-btn" data-clear="1">All matchups</button>' : ''}
+      </div>
+    </div>
+    <div class="lb-cols">
+      <div class="lb-col ally"><h4>Your team</h4>${lobbySort(st.allies || []).map((p) => row(p, 'ally')).join('')}</div>
+      <div class="lb-col enemy"><h4>Enemy team</h4>${lobbySort(st.enemies || []).map((p) => row(p, 'enemy')).join('') || '<div class="lb-note">Enemy picks show up as they lock in.</div>'}</div>
+    </div>
+    ${hiddenAllies ? '<div class="lb-note">Ranked champion select hides your teammates\' names; they show up once the game loads.</div>' : ''}`;
+}
+
+function onLobbyClick(e) {
+  const t = e.target.closest('[data-vs],[data-adv],[data-clear]');
+  if (!t) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const st = lobbyState || {};
+  const role = st.me?.role || '';
+  if (t.dataset.clear) { lobbyGo(lobbyBuildUrl({})); return; }
+  if (t.dataset.vs) {
+    const p = { matchup: t.dataset.vs };
+    if (role) p.role = role;
+    lobbyGo(lobbyBuildUrl(p));
+    return;
+  }
+  if (t.dataset.adv) {
+    const p = {};
+    if (role) p.role = role;
+    for (const x of st.enemies || []) if (x.champ && ADV_SUFFIX[x.role]) p['adv_e' + ADV_SUFFIX[x.role]] = x.champ;
+    for (const x of st.allies || []) if (!x.me && x.champ && ADV_SUFFIX[x.role]) p['adv_a' + ADV_SUFFIX[x.role]] = x.champ;
+    lobbyGo(lobbyBuildUrl(p));
+  }
+}
+ipcRenderer.on('otp:lobby-state', (_e, s) => { lobbyState = s; renderLobbyPanel(); });
+ipcRenderer.invoke('otp:lobby-get').then((s) => { if (s) { lobbyState = s; renderLobbyPanel(); } }).catch(() => {});
+
 // ---- Lifecycle & Observers ----
 // contextBridge must be called synchronously at top-level
 contextBridge.exposeInMainWorld('otp', { parseBuild, doImport });
@@ -1147,7 +1343,8 @@ window.addEventListener('DOMContentLoaded', () => {
     const needsTier = !!document.querySelector('header') &&
       (!document.getElementById('otp-tiernav') || !document.getElementById('otp-sumnav'));
     // The site re-renders its header (React), which drops our ids and the Summoner link.
-    if (needsHeader || needsFloat || needsTier) requestMountUI(80);
+    const needsLobby = isBuild && !!lobbyState && !document.getElementById("otp-lobby");
+    if (needsHeader || needsFloat || needsTier || needsLobby) requestMountUI(80);
 
     // Also remove Get Pro button if it reappears
     const getProBtn = document.querySelector('a.get-pro-btn, .get-pro-btn');

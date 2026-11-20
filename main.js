@@ -96,6 +96,9 @@ let lastAutoBuildId = null;
 let champDebounceTimer = null;
 const flags = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, overlay: false, flashSlot: 'D' };
 
+let lobbyWatch = null;
+ipcMain.handle('otp:lobby-get', () => (lobbyWatch ? lobbyWatch.current() : null));
+
 function startLcuLoops() {
   // Champ tracking loop (1.2s smooth poll)
   const lcu = require('./lcu.js');
@@ -767,6 +770,15 @@ app.whenReady().then(async () => {
   lcu.registerIpc(ipcMain);
   registerOverlayIpc();
   startLcuLoops();
+  // Lobby scouting panel on build pages (players' rank, recent games on their pick).
+  lobbyWatch = require('./lobby.js').createLobbyWatch({
+    getCreds: () => require('./lcu.js').getCreds(),
+    request: (...a) => require('league-connect').request(...a),
+    champIdToName,
+    liveGet,
+    send: (st) => { if (win && !win.isDestroyed()) win.webContents.send('otp:lobby-state', st); },
+  });
+  lobbyWatch.start();
   startLiveClientLoop();
   // Pre-warm champion and ddragon caches in background for instant lookup
   champIdToName(1).catch(() => {});
