@@ -1017,10 +1017,47 @@
   .otp-wc-head { display: flex; justify-content: space-between; font-size: 12px; color: #c2baaf; margin-bottom: 6px; }
   .otp-wc svg { width: 100%; height: auto; display: block; }
   .otp-wc svg text { fill: #8f96a3; font-size: 11px; }
+
+  /* Start screen: onetricks' home artwork behind the hero (plain background only),
+     your account, best one-tricks of your mains. Hidden once a summoner is shown. */
+  body.otp-plain #otp-wrap { position: relative; z-index: 1; }
+  #otp-homebg { display: none; position: absolute; left: 0; right: 0; top: 56px; height: 420px; z-index: 0; pointer-events: none;
+    background: linear-gradient(90deg, #181a1b 0, rgba(24,26,27,0) 20%, rgba(24,26,27,.8) 90%, #181a1b),
+      linear-gradient(#181a1b 0, rgba(24,26,27,.75) 40%, rgba(24,26,27,.85) 75%, #181a1b),
+      url("https://assets.onetricks.net/onetricks/img/home-background-image-2.jpg") 50% 5% / 1200px auto no-repeat; }
+  body.otp-plain:not(.has-result) #otp-homebg { display: block; }
+  #otp-home { max-width: 760px; margin: 22px auto 0; text-align: left; }
+  .otp-home-acc { display: flex; align-items: center; gap: 12px; background: #212324; border: 1px solid #2c2f31; border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+  .otp-home-acc:hover { border-color: #656e73; background: #1b1d1e; }
+  .otp-home-acc img { width: 42px; height: 42px; border-radius: 50%; }
+  .otp-home-acc .nm, .otp-home-row .nm { font-weight: 700; font-size: 14px; color: #e8e6e3; }
+  .otp-home-acc .nm span, .otp-home-row .nm span { color: #8f96a3; font-weight: 500; }
+  .otp-home-acc .sub, .otp-home-row .sub { font-size: 11.5px; color: #8f96a3; margin-top: 2px; }
+  .otp-home-acc .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #2fb96b; margin-right: 6px; vertical-align: 1px; }
+  .otp-home-acc .go { margin-left: auto; color: #6cb2ff; font-size: 12.5px; font-weight: 600; }
+  #otp-home-otp { margin-top: 16px; background: #212324; border: 1px solid #2c2f31; border-radius: 10px; padding: 12px 14px; }
+  .otp-home-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .otp-home-head > span { font-weight: 700; font-size: 15px; color: #e8e6e3; }
+  .otp-home-tabs { margin-left: auto; display: flex; gap: 6px; }
+  .otp-home-tabs button { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid #2c2f31; color: #c2baaf; border-radius: 999px; padding: 3px 10px 3px 4px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .otp-home-tabs button img { width: 20px; height: 20px; border-radius: 50%; }
+  .otp-home-tabs button span { color: #8f96a3; font-weight: 500; }
+  .otp-home-tabs button.on { background: #1063b7; border-color: #1063b7; color: #fff; }
+  .otp-home-tabs button.on span { color: #d6e6f7; }
+  .otp-home-row { display: grid; grid-template-columns: 22px 34px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
+  .otp-home-row + .otp-home-row { border-top: 1px solid rgba(255,255,255,.04); }
+  .otp-home-row:hover { background: #1b1d1e; }
+  .otp-home-row .rk { color: #8f96a3; font-weight: 700; text-align: center; }
+  .otp-home-row img { width: 34px; height: 34px; border-radius: 50%; }
+  .otp-home-row em { font-style: normal; margin-left: 6px; background: #f5c518; color: #1b1b1b; border-radius: 999px; padding: 0 6px; font-size: 10.5px; font-weight: 800; }
+  .otp-home-row .st { text-align: right; font-weight: 700; font-size: 13px; }
+  .otp-home-row .st .up { color: #10b981; }
+  .otp-home-row .st .down { color: #ef4444; }
 </style>
 <link rel="stylesheet" href="shell.css">
 </head>
 <body data-page="summoner">
+<div id="otp-homebg"></div>
 <div id="otp-wrap">
   <div id="otp-top"><button id="otp-back" title="Back" aria-label="Back"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button><h1>Summoner Lookup</h1><button id="otp-toplobby" title="Whole lobby in champion select"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg><span>Lobby</span></button></div>
   <div id="otp-hero">
@@ -1040,6 +1077,7 @@
       </button>
     </div>
     <div id="otp-recent"></div>
+    <div id="otp-home"></div>
   </div>
   <div id="otp-qtabs"></div>
   <div id="otp-updated"></div>

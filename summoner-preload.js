@@ -1121,3 +1121,63 @@ const fwdLobby = (st) => { try { window.dispatchEvent(new CustomEvent('otp-lobby
 ipcRenderer.on('otp:lobby-state', (_e, st) => fwdLobby(st));
 window.addEventListener('DOMContentLoaded', () => { ipcRenderer.invoke('otp:lobby-get').then(fwdLobby).catch(() => {}); });
 window.addEventListener('otp-go-build', (e) => ipcRenderer.send('otp:go-build', String(e.detail || '')));
+
+// ---- Start screen (no summoner shown yet): your account + best one-tricks ----
+// Account from the League client (remembered when it is closed); its three most
+// played champions this season (deeplol) as tabs; for the selected one, the top
+// one-tricks from onetricks' Ranking page. A click opens that player here.
+let homeAcc = null;
+let homeMains = [];
+let homeChamp = '';
+function homeDdv() { try { const c = JSON.parse(localStorage.getItem('otp.shell.champs2') || 'null'); const m = c && c.list && c.list[0] && c.list[0].icon.match(/cdn\/([^/]+)\//); if (m) return m[1]; } catch {} return '16.23.1'; }
+const HOME_TIER = { CHALLENGER: '#f0c75e', GRANDMASTER: '#e0605a', MASTER: '#b866dc', DIAMOND: '#6c95f2', EMERALD: '#2fb96b', PLATINUM: '#4fb3a9', GOLD: '#d6a64b', SILVER: '#9fb0bb', BRONZE: '#b0816d', IRON: '#8c7b72' };
+function openFromHome(p) {
+  if (!p || !p.name || !p.tag) return;
+  if (p.region) { settings.region = p.region; saveSettings(); syncRegBadge(); }
+  const inp = document.querySelector('#otp-sinput');
+  if (inp) inp.value = `${p.name}#${p.tag}`;
+  doSummonerSearch();
+}
+async function renderHome() {
+  const box = document.querySelector('#otp-home');
+  if (!box) return;
+  try { homeAcc = await ipcRenderer.invoke('otp:my-account'); } catch {}
+  const ddv = homeDdv();
+  const accHtml = homeAcc
+    ? `<div class="otp-home-acc" data-acc="1">
+        <img src="https://ddragon.leagueoflegends.com/cdn/${ddv}/img/profileicon/${homeAcc.iconId}.png" alt="">
+        <div class="who"><div class="nm">${esc(homeAcc.name)} <span>#${esc(homeAcc.tag)}</span></div>
+        <div class="sub">${homeAcc.live ? '<span class="dot"></span>Signed in to League' : 'Last signed-in account'} · Lv ${homeAcc.level ?? '?'} · ${esc(shortReg(homeAcc.region))}</div></div>
+        <span class="go">Open my profile ›</span>
+      </div>`
+    : '';
+  box.innerHTML = `${accHtml}<div id="otp-home-otp"></div>`;
+  const acc = box.querySelector('[data-acc]');
+  if (acc) acc.onclick = () => openFromHome(homeAcc);
+  if (!homeAcc || !homeAcc.region) return;
+  try { homeMains = await ipcRenderer.invoke('otp:my-mains', { name: homeAcc.name, tag: homeAcc.tag, region: homeAcc.region }); } catch { homeMains = []; }
+  if (!homeMains.length) return;
+  if (!homeMains.some((m) => m.champ === homeChamp)) homeChamp = homeMains[0].champ;
+  renderHomeOtps();
+}
+async function renderHomeOtps() {
+  const box = document.querySelector('#otp-home-otp');
+  if (!box || !homeChamp) return;
+  const ddv = homeDdv();
+  const tabs = homeMains.map((m) => `<button class="${m.champ === homeChamp ? 'on' : ''}" data-c="${esc(m.champ)}"><img src="https://ddragon.leagueoflegends.com/cdn/${ddv}/img/champion/${esc(m.champ)}.png" alt="">${esc(m.champ)}<span>${m.games}</span></button>`).join('');
+  box.innerHTML = `<div class="otp-home-head"><span>Best ${esc(homeChamp)} one-tricks</span><div class="otp-home-tabs">${tabs}</div></div><div class="otp-home-list"><div class="otp-serr">Loading…</div></div>`;
+  box.querySelectorAll('.otp-home-tabs button').forEach((b) => { b.onclick = () => { homeChamp = b.dataset.c; renderHomeOtps(); }; });
+  let list = [];
+  try { list = await ipcRenderer.invoke('otp:otp-ranking', homeChamp); } catch {}
+  const lb = box.querySelector('.otp-home-list');
+  if (!lb || box.querySelector('.otp-home-tabs .on')?.dataset.c !== homeChamp) return;
+  if (!list.length) { lb.innerHTML = '<div class="otp-serr">Could not load the onetricks ranking right now.</div>'; return; }
+  lb.innerHTML = list.slice(0, 8).map((p, i) => `<div class="otp-home-row" data-i="${i}">
+      <span class="rk">${i + 1}</span>
+      <img src="https://ddragon.leagueoflegends.com/cdn/${ddv}/img/profileicon/${p.iconId}.png" alt="">
+      <div class="who"><div class="nm">${esc(p.name)} <span>#${esc(p.tag)}</span>${p.otp ? '<em>OTP</em>' : ''}</div><div class="sub"><b style="color:${HOME_TIER[String(p.tier).toUpperCase()] || '#e8e6e3'}">${esc(p.tier)}</b> ${p.lp} LP · ${esc(shortReg(p.region))}</div></div>
+      <div class="st"><div class="${p.wr >= 55 ? 'up' : p.wr <= 48 ? 'down' : ''}">${Math.round(p.wr)}%</div><div class="sub">${p.games} games · ${(p.kda ?? 0).toFixed(2)} KDA</div></div>
+    </div>`).join('');
+  lb.querySelectorAll('.otp-home-row').forEach((row) => { row.onclick = () => openFromHome(list[Number(row.dataset.i)]); });
+}
+window.addEventListener('DOMContentLoaded', () => { renderHome(); });

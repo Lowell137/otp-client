@@ -1313,6 +1313,76 @@ app.whenReady().then(async () => {
       updatedAt: up?.updated_timestamp || null,
     };
   });
+
+  // ---- Summoner page start screen: your account + best one-tricks of your mains ----
+  const REGION_PLATFORM = { TR: 'tr1', EUW: 'euw1', EUNE: 'eun1', NA: 'na1', BR: 'br1', LAN: 'la1', LAS: 'la2', KR: 'kr', JP: 'jp1', OCE: 'oc1', OC1: 'oc1', RU: 'ru', ME: 'me1', SG: 'sg2', TW: 'tw2', VN: 'vn2' };
+  // Account logged in to the League client (remembered for when the client is closed).
+  ipcMain.handle('otp:my-account', async () => {
+    try {
+      const { request } = require('league-connect');
+      const creds = await require('./lcu.js').getCreds();
+      const j = async (u) => { const r = await request({ method: 'GET', url: u }, creds); return r.status === 200 ? r.json() : null; };
+      const [me, rl] = await Promise.all([j('/lol-summoner/v1/current-summoner'), j('/riotclient/region-locale')]);
+      if (!me || !me.gameName) throw new Error('no summoner');
+      const acc = {
+        name: me.gameName, tag: me.tagLine || '', level: me.summonerLevel, iconId: me.profileIconId,
+        region: REGION_PLATFORM[String(rl?.region || '').toUpperCase()] || '', live: true,
+      };
+      const st = readState();
+      st.myAccount = { ...acc, live: false };
+      writeState(st);
+      return acc;
+    } catch {
+      return readState().myAccount || null;
+    }
+  });
+  // Most played champions this season for an account (deeplol champion-stat).
+  ipcMain.handle('otp:my-mains', async (_e, q) => {
+    try {
+      const platform = String(q?.region || 'tr1').toUpperCase();
+      const prof = JSON.parse(await dlFetchText(`${DL}/summoner/summoner?riot_id_name=${encodeURIComponent(q?.name || '')}&riot_id_tag_line=${encodeURIComponent(q?.tag || '')}&platform_id=${platform}`, 6000));
+      const puu = prof?.summoner_basic_info_dict?.puu_id;
+      if (!puu) return [];
+      let season = 27;
+      try { const s = JSON.parse(await dlFetchText(`${DL}/common/season-list`, 5000)); if (s?.season_list?.[0]) season = s.season_list[0]; } catch {}
+      const cs = JSON.parse(await dlFetchText(`${DL}/summoner/champion-stat?puu_id=${encodeURIComponent(puu)}&season=${season}&platform_id=${platform}`, 8000));
+      const list = (cs?.counter_champion_stats?.total?.enemy_champion_stats?.All || []).filter((c) => c && c.champion_id).sort((a, b) => b.games - a.games).slice(0, 3);
+      const out = [];
+      for (const c of list) out.push({ champ: (await champIdToName(c.champion_id)) || '', games: c.games, wr: c.win_rate });
+      return out.filter((c) => c.champ);
+    } catch { return []; }
+  });
+  // A champion's best one-tricks from onetricks' Ranking page, read with the app's
+  // own browser session (the same one the build pages use).
+  const otpRankCache = new Map();
+  ipcMain.handle('otp:otp-ranking', async (_e, champ) => {
+    const c = String(champ || '').replace(/[^A-Za-z]/g, '');
+    if (!c || !win || win.isDestroyed()) return [];
+    const hit = otpRankCache.get(c);
+    if (hit && Date.now() - hit.ts < 30 * 60 * 1000) return hit.list;
+    try {
+      const r = await win.webContents.session.fetch(`https://www.onetricks.gg/champions/ranking/${c}`, {
+        headers: { 'User-Agent': win.webContents.getUserAgent() },
+      });
+      if (!r.ok) return [];
+      const html = await r.text();
+      const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+      const rk = m ? JSON.parse(m[1])?.props?.pageProps?.rankings : null;
+      const key = rk ? Object.keys(rk).find((k) => /^S\d/.test(k)) || Object.keys(rk)[0] : null;
+      const list = ((key && rk[key]?.mainsData) || []).slice(0, 10).map((p) => {
+        const [name, tag] = String(p.player || '').split(' #');
+        return {
+          name: (name || '').trim(), tag: (tag || '').trim(), region: String(p.region || '').toLowerCase(),
+          tier: p.tier, lp: p.lp, games: p.mainGames, wr: p.winrate, kda: p.kda, iconId: p.profileIconId, otp: !!p.otp,
+        };
+      }).filter((p) => p.name && p.tag);
+      otpRankCache.set(c, { ts: Date.now(), list });
+      return list;
+    } catch (e) {
+      console.warn('[otp] ranking fetch:', e?.message || e);
+      return [];
+    }
+  });
   // deeplol's "Update" button: refresh matches, ranks and champion stats.
   ipcMain.handle('otp:deeplol-renew', async (_e, q) => {
     const platform = String(q?.platform || 'TR1').toUpperCase();
