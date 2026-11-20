@@ -17,6 +17,7 @@ function systemPrompt() {
     '1. Inventing is forbidden. Never state a rank, stat, tier, win rate, build, champion role, patch change or item from memory. Your own knowledge is old; the game changes every patch.',
     '2. Always use the newest data: get it from the tools every time, even if you think you know. Pick the tool that fits: suggest_pick to recommend a champion to play, tier_list for what is strong, recommend_items for boots/defensive items, current_game for who is in my game, player_profile / player_matches for one player.',
     '5. Call each tool at most once per question with the same input. When you have the data, answer.',
+    'champion_build gives runes, items, spells and skill order for a champion; use it for build/rune questions.',
     `3. If no stats tool covers the question, research it: patch_notes for what changed in a patch (official notes), lol_wiki for champions, items, runes, modes and a champion's patch history ("Jinx/Patch history"), read_page for a link. Answer from what you found and name the source and patch.`,
     '4. If you still cannot find it, say plainly that you could not find it. A short honest "I could not find that" is always better than a guess.',
     'Only call current_game, player_profile or player_matches when the user asks about a specific game or player. If a tool returns an error, tell the user plainly what is missing.',
@@ -29,14 +30,17 @@ async function run({ history, onEvent, signal, model }) {
   const provider = providers.current();
   const list = tools.all();
   const messages = [{ role: 'system', content: systemPrompt() }, ...history];
+  const thoughts = [];
+  const think = (t) => { if (t && t.trim()) thoughts.push(t.trim()); };
   const done = new Map(); // "tool|args" -> result: small models like to repeat the same call
   const m = model || providers.currentModel();
   for (let step = 0; step < MAX_STEPS; step++) {
     const r = await provider.chat({ messages, tools: list, model: m, signal });
+    think(r.thinking);
     if (!r.toolCalls.length) {
       const content = r.content || '(no answer)';
       onEvent({ type: 'answer', content });
-      return { content, messages: messages.slice(1) };
+      return { content, thinking: thoughts.join('\n\n'), messages: messages.slice(1) };
     }
     messages.push({ role: 'assistant', content: r.content || '', toolCalls: r.toolCalls });
     let repeats = 0;
@@ -65,9 +69,10 @@ async function run({ history, onEvent, signal, model }) {
   // Out of steps (or looping): ask once more with no tools, so it must answer.
   messages.push({ role: 'user', content: 'Answer my question now using only the tool results above. If they do not contain the answer, say what is missing.' });
   const fin = await provider.chat({ messages, tools: [], model: m, signal });
+  think(fin.thinking);
   const content = fin.content || 'I could not find an answer to that.';
   onEvent({ type: 'answer', content });
-  return { content, messages: messages.slice(1) };
+  return { content, thinking: thoughts.join('\n\n'), messages: messages.slice(1) };
 }
 
 module.exports = { run, ctx: null };

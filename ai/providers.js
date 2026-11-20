@@ -66,7 +66,7 @@ function ollama(c) {
         if (typeof args === 'string') { try { args = JSON.parse(args); } catch { args = {}; } }
         return { id: `call_${Date.now()}_${i}`, name: tc.function?.name || '', args };
       });
-      return { content: stripThink(msg.content || ''), toolCalls };
+      return { content: stripThink(msg.content || ''), thinking: [msg.thinking, thinkOf(msg.content)].filter(Boolean).join('\n'), toolCalls };
     },
     async models() {
       const j = await getJson(`${base}/api/tags`);
@@ -108,7 +108,8 @@ function openaiCompat(c) {
         try { args = typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments || '{}') : (tc.function?.arguments || {}); } catch {}
         return { id: tc.id || `call_${Date.now()}_${i}`, name: tc.function?.name || '', args };
       });
-      return { content: stripThink(typeof msg.content === 'string' ? msg.content : ''), toolCalls };
+      const text = typeof msg.content === 'string' ? msg.content : '';
+      return { content: stripThink(text), thinking: [msg.reasoning_content, msg.reasoning, thinkOf(text)].filter((x) => typeof x === 'string' && x.trim()).join('\n'), toolCalls };
     },
     async models() {
       if (!base) return [];
@@ -119,8 +120,10 @@ function openaiCompat(c) {
   };
 }
 
-// Reasoning models put their thinking in <think>...</think>; the chat shows the answer only.
-function stripThink(s) { return String(s || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim(); }
+// Reasoning models put their thinking in <think>...</think>: the answer is shown
+// without it, and the thinking apart, folded (ai.html).
+function stripThink(s) { return String(s || '').replace(/<think>[\s\S]*?(<\/think>|$)/g, '').trim(); }
+function thinkOf(s) { return [...String(s || '').matchAll(/<think>([\s\S]*?)(<\/think>|$)/g)].map((m) => m[1].trim()).filter(Boolean).join('\n'); }
 
 // Test double: OTP_AI_MOCK=1 answers with a scripted tool call, then echoes the result.
 function mock() {

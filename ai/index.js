@@ -68,7 +68,7 @@ function register({ ipcMain, ctx }) {
     try {
       const history = (q?.history || []).filter((m) => m && (m.role === 'user' || m.role === 'assistant' || m.role === 'tool')).slice(-30);
       const r = await agent.run({ history, onEvent: send, signal: ctl.signal, model: q?.model });
-      return { ok: true, content: r.content, messages: r.messages };
+      return { ok: true, content: r.content, thinking: r.thinking || '', messages: r.messages };
     } catch (err) {
       const message = ctl.signal.aborted ? 'Stopped.' : String(err?.message || err);
       send({ type: 'error', message });
