@@ -88,6 +88,17 @@ function register({ ipcMain, ctx }) {
 
   ipcMain.on('otp:ai-stop', (_e, id) => { const c = running.get(String(id)); if (c) c.abort(); });
 
+  // Ollama setup screen (ai/setup.js)
+  const setup = require('./setup.js');
+  ipcMain.handle('otp:ai-setup-status', async () => setup.status(providers.ollama(config.load())));
+  ipcMain.handle('otp:ai-setup-commands', (_e, model) => setup.commands(model));
+  ipcMain.handle('otp:ai-setup-install', (_e, model) => {
+    // Use Ollama with the chosen model once it is there.
+    const r = setup.install(model);
+    config.update({ provider: 'ollama', ollama: { model: r.model } });
+    return r;
+  });
+
   // Saved conversations (ai/chats.js)
   const chats = require('./chats.js');
   ipcMain.handle('otp:ai-chats-list', () => chats.list());

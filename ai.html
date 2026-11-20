@@ -35,6 +35,23 @@
   #main { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
   #banner { display: none; margin: 10px 12px 0; background: var(--fg); border: 1px solid var(--line); border-left: 3px solid #d9a33a; border-radius: 8px; padding: 9px 12px; font-size: 12px; line-height: 1.5; }
   #banner.on { display: block; }
+  #setup { display: none; margin: 12px; background: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 14px; overflow-y: auto; }
+  #setup.on { display: block; }
+  #setup h3 { margin: 0 0 6px; font-size: 14px; }
+  #setup p { margin: 0 0 8px; font-size: 12.5px; color: var(--soft); line-height: 1.5; }
+  #setup .hw { font-size: 11.5px; color: var(--mute); margin-bottom: 10px; }
+  #setup .models { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  #setup .mc { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+  #setup .mc.on { border-color: var(--blue); background: rgba(16, 99, 183, .12); }
+  #setup .mc.no { opacity: .65; }
+  #setup .mc input { margin-top: 2px; accent-color: var(--blue); }
+  #setup .mc b { font-size: 12.5px; }
+  #setup .mc i { font-style: normal; font-size: 10px; font-weight: 700; color: #fff; background: var(--blue); border-radius: 4px; padding: 1px 5px; margin-left: 6px; }
+  #setup .mc em { display: block; font-style: normal; font-size: 11.5px; color: var(--mute); margin-top: 2px; }
+  #setup .row { display: flex; gap: 8px; margin-bottom: 8px; }
+  #setup .hint { font-size: 11.5px; color: var(--mute); line-height: 1.5; margin-top: 4px; }
+  #setup .hint a { color: #6cb2ff; }
+  #setup.on ~ #log, #setup.on ~ #composeWrap { display: none; }
   #banner b { color: #f0c75e; }
   #banner code { background: #2c2f31; border-radius: 4px; padding: 1px 5px; font-size: 11.5px; }
 
@@ -156,6 +173,7 @@
 
 <div id="main">
   <div id="banner"></div>
+  <div id="setup"></div>
   <div id="log"></div>
   <div id="composeWrap">
     <div id="compose">
@@ -333,16 +351,55 @@
     $('#provName').textContent = provName();
     $('#provDot').className = 'dot' + (status.ok ? '' : ' off');
     $('#modelName').textContent = (cfg.provider === 'custom' ? cfg.custom.model : cfg.ollama.model) || (models[0] || 'Choose a model');
+    // Ollama missing or without a model: the setup card instead of a warning.
+    if (cfg.provider === 'ollama' && (!status.ok || !models.length)) { banner.className = ''; showSetup(); return; }
+    hideSetup();
     if (!status.ok) {
       banner.className = 'on';
       const why = /401|403|auth/i.test(status.error || '') ? 'It wants an API key (or the key is wrong).' : esc(status.error || '');
-      banner.innerHTML = cfg.provider === 'ollama'
-        ? '<b>Ollama is not running.</b> The assistant runs on a local model through Ollama. Install it from <code>ollama.com</code> (or run <code>winget install Ollama.Ollama</code> in PowerShell), then pull a model: <code>ollama pull qwen3:4b</code>. Or use your own server: click the name below the chat box.'
-        : `<b>Can't use ${esc(provName())}.</b> ${why} Click the name below the chat box to fix it.`;
-    } else if (!models.length && cfg.provider === 'ollama') {
-      banner.className = 'on';
-      banner.innerHTML = '<b>No model yet.</b> Pull one in PowerShell, for example <code>ollama pull qwen3:4b</code>.';
+      banner.innerHTML = `<b>Can't use ${esc(provName())}.</b> ${why} Click the name below the chat box to fix it.`;
     } else banner.className = '';
+  }
+
+  // ---- Setup card: install Ollama + a model in one click, or copy the commands ----
+  let setupPick = '';
+  let setupPoll = null;
+  async function showSetup() {
+    const box = $('#setup');
+    const st = await window.otpAI.setupStatus();
+    if (!setupPick) setupPick = st.recommended;
+    const state = !st.installed ? 'Ollama is not installed yet.' : !st.running ? 'Ollama is installed but not running.' : 'Ollama is running, but no model is downloaded yet.';
+    box.innerHTML = `<h3>Set up the assistant</h3>
+      <p>It runs on a free local model through <b>Ollama</b>, on your PC. ${esc(state)}</p>
+      <div class="hw">${esc(st.gpu)} · ${st.ramGb} GB RAM</div>
+      <div class="models">${st.choices.map((m) => `<label class="mc${m.id === setupPick ? ' on' : ''}${m.fits ? '' : ' no'}"><input type="radio" name="sm" value="${esc(m.id)}"${m.id === setupPick ? ' checked' : ''}>
+        <span><b>${esc(m.name)}</b>${m.id === st.recommended ? '<i>Recommended</i>' : ''}<em>${esc(m.note)}</em></span></label>`).join('')}</div>
+      <div class="row"><button class="btn pri" id="suInstall">Install</button><button class="btn" id="suCopy">Copy commands</button></div>
+      <div class="hint" id="suNote">Install opens PowerShell and shows the progress (Ollama, then the model). Copy gives the same commands to paste into PowerShell yourself.</div>
+      <div class="hint">Have your own server (LM Studio, OpenRouter, Unsloth)? <a href="#" id="suCustom">Use it instead</a>.</div>`;
+    box.classList.add('on');
+    box.querySelectorAll('input[name=sm]').forEach((r) => { r.onchange = () => { setupPick = r.value; box.querySelectorAll('.mc').forEach((l) => l.classList.toggle('on', l.querySelector('input').checked)); }; });
+    $('#suInstall').onclick = async () => {
+      await window.otpAI.setupInstall(setupPick);
+      $('#suNote').innerHTML = '<span style="color:#2fb96b">PowerShell is open.</span> When it says Done, the assistant is ready here.';
+      startPoll();
+    };
+    $('#suCopy').onclick = async () => {
+      const txt = await window.otpAI.setupCommands(setupPick);
+      try { await navigator.clipboard.writeText(txt); } catch {}
+      $('#suNote').innerHTML = '<span style="color:#2fb96b">Copied.</span> Open PowerShell (Start menu → PowerShell), right-click to paste, press Enter. Run the second line when the first is done.';
+      startPoll();
+    };
+    $('#suCustom').onclick = (e) => { e.preventDefault(); openSettings(); };
+  }
+  function hideSetup() { $('#setup').classList.remove('on'); if (setupPoll) { clearInterval(setupPoll); setupPoll = null; } }
+  // While installing: check every 5 s, switch to the chat once the model is there.
+  function startPoll() {
+    if (setupPoll) return;
+    setupPoll = setInterval(async () => {
+      const st = await window.otpAI.setupStatus().catch(() => null);
+      if (st && st.running && st.models.length) { hideSetup(); refreshStatus(); }
+    }, 5000);
   }
   async function setModel(id) {
     if (!cfg || !id) return;
