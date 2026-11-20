@@ -384,7 +384,7 @@ async function parseBuild() {
 }
 
 // ---- Settings Management ----
-const DEF_SETTINGS = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, autoMatchup: true, overlay: false, flashSlot: 'D', apiKey: '', region: 'tr1' };
+const DEF_SETTINGS = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, autoMatchup: true, autoStart: false, overlay: false, flashSlot: 'D', apiKey: '', region: 'tr1' };
 let settings = { ...DEF_SETTINGS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('otp.settings') || '{}')); } catch {}
 function saveSettings() {
@@ -721,6 +721,10 @@ function buildSettingsPopover() {
       </div>
       <div class="otp-switch-row" data-k="autoMatchup">
         <span>Auto Matchup (Lane Opponent)</span>
+        <span class="otp-sw"></span>
+      </div>
+      <div class="otp-switch-row" data-k="autoStart" title="Starts hidden with Windows and opens when the League client starts; closing keeps it in the tray">
+        <span>Start with League</span>
         <span class="otp-sw"></span>
       </div>
       <div class="otp-switch-row" data-k="autoAccept">
@@ -1807,7 +1811,8 @@ function placeSiteNav() {
   const extra = document.getElementById('otp-hdr-extra');
   if (!extra) return;
   const hh = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--otp-hh')) || 66;
-  let top = hh + 24;
+  // Home: level with the champion shortcut row; other pages: just under the header.
+  let top = location.pathname === '/' ? hh + 24 : hh + 10;
   extra.style.top = top + 'px';
   for (let i = 0; i < 4; i++) {
     const r = extra.getBoundingClientRect();
@@ -1823,7 +1828,7 @@ function placeSiteNav() {
       if (hit) break;
     }
     extra.style.visibility = hit ? 'hidden' : '';
-    if (hit) extra.style.top = (hh + 14) + 'px';
+    if (hit) extra.style.top = top + 'px';
     return;
   }
 }
