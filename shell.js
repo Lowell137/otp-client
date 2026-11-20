@@ -58,8 +58,51 @@
   // Summoner page: the header search looks up players (Name#TAG) instead of
   // champions; suggestions are the recent searches. The page's preload listens
   // for 'otp-summoner-search'.
-  const summonerMode = page === 'summoner';
-  if (summonerMode) input.placeholder = 'Search Summoner  (Name#TAG)';
+  // Only while a summoner (or the lobby) is shown: on the empty page the big
+  // search is there, so the header keeps the champion build search.
+  let summonerMode = false;
+  const REGIONS = ['tr1', 'euw1', 'eun1', 'na1', 'br1', 'la1', 'la2', 'kr', 'jp1', 'oc1', 'ru'];
+  const regShort = (r) => String(r || '').replace(/1$/, '').toUpperCase();
+  const readRegion = () => { try { return JSON.parse(localStorage.getItem('otp.settings') || '{}').region || 'tr1'; } catch { return 'tr1'; } };
+  let region = readRegion();
+  const regBtn = document.createElement('button');
+  regBtn.id = 'otp-shell-reg';
+  regBtn.type = 'button';
+  regBtn.title = 'Region';
+  const regList = document.createElement('div');
+  regList.id = 'otp-shell-reglist';
+  regList.innerHTML = REGIONS.map((r) => `<div data-r="${r}">${regShort(r)}</div>`).join('');
+  input.parentElement.prepend(regBtn);
+  input.parentElement.appendChild(regList);
+  const paintReg = () => {
+    regBtn.textContent = regShort(region) + ' ▾';
+    regList.querySelectorAll('[data-r]').forEach((d) => d.classList.toggle('sel', d.dataset.r === region));
+  };
+  regBtn.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); regList.classList.toggle('open'); });
+  regList.addEventListener('mousedown', (e) => {
+    const d = e.target.closest('[data-r]');
+    if (!d) return;
+    e.preventDefault();
+    region = d.dataset.r;
+    paintReg();
+    regList.classList.remove('open');
+    input.focus();
+  });
+  document.addEventListener('mousedown', (e) => { if (!e.target.closest('#otp-shell-reglist, #otp-shell-reg')) regList.classList.remove('open'); });
+  function setMode() {
+    const on = page === 'summoner' && document.body.classList.contains('has-result');
+    if (on === summonerMode) return;
+    summonerMode = on;
+    input.value = '';
+    box.classList.remove('open');
+    input.placeholder = on ? 'Search Summoner  (Name#TAG)' : 'Search Champion Builds…';
+    h.classList.toggle('sum-mode', on);
+    if (on) { region = readRegion(); paintReg(); }
+  }
+  if (page === 'summoner') {
+    new MutationObserver(setMode).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    setMode();
+  }
   const escH = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const recents = () => { try { return JSON.parse(localStorage.getItem('otp.recent') || '[]'); } catch { return []; } };
   function renderSummoners() {
@@ -68,6 +111,7 @@
     const list = recents().filter((r) => !q || `${r.name}#${r.tag}`.toLowerCase().includes(q)).slice(0, 7);
     shown = [];
     if (raw && raw.includes('#') && raw.indexOf('#') > 0) shown.push({ typed: true, text: raw });
+    if (shown[0] && shown[0].typed) shown[0].region = region;
     shown.push(...list.map((r) => ({ name: r.name, tag: r.tag, region: r.region })));
     if (!shown.length) { box.classList.remove('open'); return; }
     sel = 0;
@@ -82,10 +126,10 @@
       const raw = input.value.trim();
       const i = raw.lastIndexOf('#');
       if (i < 1) return;
-      pick = { name: raw.slice(0, i), tag: raw.slice(i + 1) };
+      pick = { name: raw.slice(0, i), tag: raw.slice(i + 1), region };
     } else if (pick.typed) {
       const i = pick.text.lastIndexOf('#');
-      pick = { name: pick.text.slice(0, i), tag: pick.text.slice(i + 1) };
+      pick = { name: pick.text.slice(0, i), tag: pick.text.slice(i + 1), region };
     }
     input.value = '';
     box.classList.remove('open');

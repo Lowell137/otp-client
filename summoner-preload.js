@@ -890,6 +890,7 @@ function toggleMatchExpand(mi) {
   }).join('');
   box.innerHTML = matchTabsHtml(m, board);
   wireMatchTabs(box);
+  wireWinChance(box, m);
   box.style.display = 'block';
   box.querySelectorAll('.otp-plink').forEach((el) => {
     el.onclick = (e) => { e.stopPropagation(); openPlayerProfile(el.dataset.name, el.dataset.tag); };
@@ -951,8 +952,46 @@ function winChanceSvg(m) {
       ${ticks.map((t) => `<text x="${X(t)}" y="${H - 8}" text-anchor="middle">${t}m</text>`).join('')}
       <path d="${area}" fill="${m.win ? 'rgba(79,155,232,.16)' : 'rgba(224,96,90,.14)'}"/>
       <path d="${d}" fill="none" stroke="${col}" stroke-width="2.2" stroke-linejoin="round"/>
-      ${pts.map((p) => `<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.wr).toFixed(1)}" r="3" fill="${p.wr >= 50 ? '#4f9be8' : '#e0605a'}"><title>${p.t.toFixed(0)}m: ${p.wr.toFixed(1)}%</title></circle>`).join('')}
-    </svg></div>`;
+      <line class="wc-hl" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="#c2baaf" stroke-width="1" stroke-dasharray="3 3" visibility="hidden"/>
+      <circle class="wc-dot" r="5" fill="${col}" stroke="#fff" stroke-width="2" visibility="hidden"/>
+      <rect class="wc-hit" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>
+    </svg><div class="wc-tip" hidden></div></div>`;
+}
+// Hover on the win chance chart: nearest event gets a guide line, a dot and a
+// "12m · 63.4% (▲4.1)" label (like deeplol's AI graph).
+function wireWinChance(box, m) {
+  const wrap = box.querySelector('.otp-wc');
+  const svg = wrap && wrap.querySelector('svg');
+  const pts = m.winChance || [];
+  if (!svg || pts.length < 2) return;
+  const W = 760, H = 220, L = 34, R = 10, T = 12, B = 26;
+  const tMax = Math.max(...pts.map((p) => p.t), 1);
+  const X = (t) => L + (t / tMax) * (W - L - R);
+  const Y = (v) => T + (1 - v / 100) * (H - T - B);
+  const hl = svg.querySelector('.wc-hl'), dot = svg.querySelector('.wc-dot'), tip = wrap.querySelector('.wc-tip');
+  const hide = () => { hl.setAttribute('visibility', 'hidden'); dot.setAttribute('visibility', 'hidden'); tip.hidden = true; };
+  svg.addEventListener('mouseleave', hide);
+  svg.addEventListener('mousemove', (e) => {
+    const r = svg.getBoundingClientRect();
+    const sx = ((e.clientX - r.left) / r.width) * W;
+    if (sx < L || sx > W - R) { hide(); return; }
+    const t = ((sx - L) / (W - L - R)) * tMax;
+    let i = 0;
+    for (let k = 1; k < pts.length; k++) if (Math.abs(pts[k].t - t) < Math.abs(pts[i].t - t)) i = k;
+    const p = pts[i], prev = pts[Math.max(0, i - 1)];
+    const x = X(p.t), y = Y(p.wr);
+    hl.setAttribute('x1', x); hl.setAttribute('x2', x); hl.setAttribute('visibility', 'visible');
+    dot.setAttribute('cx', x); dot.setAttribute('cy', y); dot.setAttribute('visibility', 'visible');
+    const delta = p.wr - prev.wr;
+    const up = p.wr >= 50;
+    tip.innerHTML = `<b style="color:${up ? '#4f9be8' : '#e0605a'}">${p.wr.toFixed(1)}%</b> <span style="color:${delta >= 0 ? '#2fb96b' : '#e0605a'}">(${delta >= 0 ? '▲' : '▼'}${Math.abs(delta).toFixed(1)})</span><div>${Math.floor(p.t)}:${String(Math.round((p.t % 1) * 60)).padStart(2, '0')}</div>`;
+    tip.hidden = false;
+    const wr = wrap.getBoundingClientRect();
+    const px = r.left - wr.left + (x / W) * r.width;
+    const py = r.top - wr.top + (y / H) * r.height;
+    tip.style.left = Math.max(4, Math.min(wr.width - tip.offsetWidth - 4, px - tip.offsetWidth / 2)) + 'px';
+    tip.style.top = Math.max(4, py - tip.offsetHeight - 12) + 'px';
+  });
 }
 
 async function openPlayerProfile(name, tag) {
