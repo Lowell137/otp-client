@@ -2,10 +2,10 @@
 //
 // op.gg pages are server-rendered React (RSC). The payload sits in
 // self.__next_f.push([1,"..."]) chunks inside the HTML; concatenated, it holds:
-//  - Mayhem augments: {"data":[{id,tier(0-5),performance,popular,name,key,
-//    largeIcon,rarity,desc}, ...]} (tier 0 = best, 5 = not enough games)
+//  - Mayhem augments: {"data":[{id,tier,performance,popular,name,key,
+//    largeIcon,rarity,desc}, ...]}  (we keep popular = pick rate only)
 //  - Arena augments: {"1":[...],"4":[...]} by rarity, each
-//    {id,name,rareity,image_url,pick_rate,win_rate,play,desc} (no tier: we rank)
+//    {id,name,rareity,image_url,pick_rate,win_rate,play,desc} (pick_rate only)
 //  - Build tables as rendered rows keyed starter_items_N / boots_N /
 //    core_items_N / spell_N / skill_N, items as "metaId":<id>. Rows come in
 //    popularity order; the percentages live in lazily loaded parts, so we keep
@@ -36,20 +36,29 @@ function sliceJson(raw, start) {
   return null;
 }
 
+// Riot's League policy: products may not show win rates for Augments or Arena
+// items (pick rate is allowed). So only pick rate leaves this file: no win rate,
+// no win-rate tier. Augments are grouped by how often they are picked:
+// band 0 = most picked (top 15%), 1 = common (next 35%), 2 = less picked.
+function byPick(list) {
+  const sorted = [...list].filter((x) => x.pick > 0).sort((x, y) => y.pick - x.pick);
+  sorted.forEach((x, i) => { const p = i / Math.max(1, sorted.length); x.band = p < 0.15 ? 0 : p < 0.5 ? 1 : 2; });
+  for (const x of list) if (x.band == null) x.band = 2;
+  return list.sort((x, y) => x.band - y.band || y.pick - x.pick);
+}
+
 function mayhemAugments(raw) {
   const i = raw.indexOf('{"data":[{"id":');
   if (i < 0) return [];
   try {
     const arr = JSON.parse(sliceJson(raw, raw.indexOf('[', i)));
-    return arr.filter((a) => a && a.name).map((a) => ({
+    return byPick(arr.filter((a) => a && a.name).map((a) => ({
       id: a.id, name: a.name, icon: a.largeIcon || a.smallIcon || '', rarity: a.rarity,
-      tier: a.tier, score: a.performance, pick: a.popular, desc: String(a.desc || '').replace(/<[^>]+>/g, ''),
-    }));
+      pick: Number(a.popular) || 0, desc: String(a.desc || '').replace(/<[^>]+>/g, ''),
+    })));
   } catch { return []; }
 }
 
-// Arena: rank inside the champion by win rate, shrunk towards the average when
-// few games (so a 3-game 100% doesn't top the list); tiers by percentile.
 function arenaAugments(raw) {
   const all = [];
   const re = /\{"id":\d+,"name":"(?:[^"\\]|\\.)*","rareity":\d/g;
@@ -64,23 +73,12 @@ function arenaAugments(raw) {
       seen.add(a.id);
       all.push({
         id: a.id, name: a.name, icon: a.image_url || '', rarity: a.rareity,
-        wr: Number(a.win_rate) || 0, pick: Number(a.pick_rate) || 0, games: Number(String(a.play || '0').replace(/,/g, '')) || 0,
+        pick: Number(a.pick_rate) || 0, games: Number(String(a.play || '0').replace(/,/g, '')) || 0,
         desc: String(a.desc || '').replace(/<[^>]+>/g, ''),
       });
     } catch {}
   }
-  if (!all.length) return [];
-  const tot = all.reduce((s, a) => s + a.games, 0) || 1;
-  const avg = all.reduce((s, a) => s + a.wr * a.games, 0) / tot;
-  const K = 60;
-  for (const a of all) a.score = (a.wr * a.games + avg * K) / (a.games + K);
-  const ranked = [...all].filter((a) => a.games >= 20).sort((x, y) => y.score - x.score);
-  ranked.forEach((a, i) => {
-    const p = i / Math.max(1, ranked.length);
-    a.tier = p < 0.05 ? 0 : p < 0.2 ? 1 : p < 0.45 ? 2 : p < 0.7 ? 3 : 4;
-  });
-  for (const a of all) if (a.tier == null) a.tier = 5;
-  return all.sort((x, y) => x.tier - y.tier || y.score - x.score);
+  return byPick(all);
 }
 
 function rows(raw, key, n) {

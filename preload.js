@@ -2099,8 +2099,9 @@ ipcRenderer.invoke('otp:postgame-get').then((c) => { if (c) { pgCard = c; Promis
 let modeOpen = '';
 let modeFilter = 'all';
 const modeCache = new Map();
-const MODE_TIER = ['S+', 'S', 'A', 'B', 'C', '–'];
-const MODE_TIER_COL = ['#ff4e50', '#ff8a3d', '#f5c518', '#2fb96b', '#4f9be8', '#656e73'];
+// Augments are grouped by pick rate only (Riot's policy bans showing augment win rates).
+const MODE_TIER = ['Most picked', 'Common', 'Less picked'];
+const MODE_TIER_COL = ['#1063b7', '#3a4a5c', '#33373a'];
 // op.gg rarity flags: 1 Silver, 4 Gold, 8 Prism.
 const RARITY = { 1: 'Silver', 4: 'Gold', 8: 'Prism' };
 const MODES_CSS = `
@@ -2122,7 +2123,7 @@ const MODES_CSS = `
 #otp-modes .md-filters{margin-left:auto;display:flex;gap:4px}
 #otp-modes .md-filters button{background:transparent;border:1px solid var(--border-light,#2c2f31);color:var(--lightText,#c2baaf);border-radius:999px;padding:2px 10px;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0}
 #otp-modes .md-filters button.on{background:var(--blue,#1063b7);border-color:var(--blue,#1063b7);color:#fff}
-#otp-modes .md-tier{display:grid;grid-template-columns:44px 1fr;gap:10px;align-items:start;padding:8px 0}
+#otp-modes .md-tier{display:grid;grid-template-columns:62px 1fr;gap:10px;align-items:start;padding:8px 0}
 #otp-modes .md-tier+.md-tier{border-top:1px solid rgba(255,255,255,.05)}
 #otp-modes .md-tl{font-weight:900;font-size:18px;text-align:center;border-radius:8px;padding:6px 0;color:#111}
 #otp-modes .md-augs{display:flex;flex-wrap:wrap;gap:6px}
@@ -2212,11 +2213,11 @@ async function renderModes() {
     ? `<div class="md-sec"><h5>Spells &amp; skills</h5><div class="md-builds">${(b.spells || []).slice(0, 2).map((ids, i) => `<div class="md-row"><span class="md-rank">${i + 1}</span>${ids.map((id) => spellIcon(id) ? `<img src="${spellIcon(id)}" alt="">` : '').join('')}</div>`).join('')}${sk.length ? `<div class="md-row md-skills"><span class="md-rank">Max</span>${sk.map((k, i) => (i ? '<span class="arr">›</span>' : '') + `<b style="background:${SK_COL[k]}">${k}</b>`).join('')}</div>` : ''}${lv.length ? `<div class="md-row md-levels">${lv.map((k, i) => `<b title="Level ${i + 1}" style="background:${SK_COL[k]}">${k}</b>`).join('')}</div>` : ''}</div></div>`
     : '';
   const augs = (d.augments || []).filter((a) => modeFilter === 'all' || String(a.rarity) === modeFilter);
-  const byTier = [0, 1, 2, 3, 4].map((t) => augs.filter((a) => a.tier === t));
-  const stat = (a) => (modeOpen === 'arena' ? `${a.wr.toFixed(1)}% WR · ${a.games} games` : `${a.pick.toFixed(1)}% picked`);
+  const byTier = [0, 1, 2].map((t) => augs.filter((a) => a.band === t));
+  const stat = (a) => `${a.pick.toFixed(1)}% picked`;
   const augHtml = byTier.map((list, t) => (list.length ? `<div class="md-tier"><div class="md-tl" style="background:${MODE_TIER_COL[t]}">${MODE_TIER[t]}</div><div class="md-augs">${list.map((a) => `<div class="md-aug r${a.rarity}" title="${lobbyEsc(a.name)}: ${lobbyEsc(a.desc)}"><img src="${a.icon}" alt=""><div style="min-width:0"><div class="nm">${lobbyEsc(a.name)}</div><div class="st">${stat(a)}</div></div></div>`).join('')}</div></div>` : '')).join('');
   const rarities = [['all', 'All'], ['1', 'Silver'], ['4', 'Gold'], ['8', 'Prism']];
-  panel.innerHTML = `<div class="md-head"><span class="md-title">${lobbyEsc(champ)} · ${title}</span><span class="md-src">op.gg · ${modeOpen === 'arena' ? 'tiers from win rate and games on this champion' : 'tiers for this champion'}</span><button class="md-x" title="Close">×</button></div>
+  panel.innerHTML = `<div class="md-head"><span class="md-title">${lobbyEsc(champ)} · ${title}</span><span class="md-src">op.gg · by pick rate on this champion</span><button class="md-x" title="Close">×</button></div>
     ${buildHtml}
     ${spellsHtml}
     <div class="md-sec"><h5>Augments for ${lobbyEsc(champ)}<span class="md-filters">${rarities.map(([v, l]) => `<button data-rf="${v}" class="${modeFilter === v ? 'on' : ''}">${l}</button>`).join('')}</span></h5>${augHtml || '<div class="md-empty">No augment data.</div>'}</div>`;
