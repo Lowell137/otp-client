@@ -212,7 +212,7 @@
 
   const TOOL_LABEL = {
     current_game: 'Checking the current game', player_profile: 'Looking up the player', player_matches: 'Reading match history',
-    recommend_items: 'Checking the enemy team',
+    recommend_items: 'Checking the enemy team', tier_list: 'Reading the tier list', patch_notes: 'Reading patch notes', lol_wiki: 'Searching the wiki', read_page: 'Reading a page',
   };
   const EMPTY = `<div id="empty"><h2>Ask about your game</h2>
     <div>Players, ranks, match history and items against the enemy team, from deeplol and the League client. Add a screenshot with +.</div>
@@ -390,7 +390,7 @@
         const c = document.createElement('span');
         c.className = 'step';
         c.dataset.name = ev.name;
-        const who = ev.args && (ev.args.riotId || ev.args.champion);
+        const who = ev.args && (ev.args.riotId || ev.args.champion || ev.args.find || ev.args.query || ev.args.role || (ev.args.url ? String(ev.args.url).replace(/^https?:\/\/(www\.)?/, '').split('/')[0] : ''));
         c.innerHTML = `<span class="dot"></span>${esc(TOOL_LABEL[ev.name] || ev.name)}${who ? ': ' + esc(who) : ''}`;
         steps.appendChild(c);
         scroll();
