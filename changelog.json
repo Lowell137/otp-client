@@ -1,5 +1,19 @@
 [
   {
+    "version": "0.1.17",
+    "date": "2026-11-20",
+    "items": [
+      [
+        "Post-game card",
+        "After a game, the build page shows the result, LP change, KDA, CS, damage, gold and your items next to the most common one-trick core build."
+      ],
+      [
+        "Start with League, fixed",
+        "OTP Client is no longer added to Windows startup. A tiny watcher (about 4 MB) opens OTP Client when the League client starts; closing OTP Client really closes it."
+      ]
+    ]
+  },
+  {
     "version": "0.1.16",
     "date": "2026-11-20",
     "items": [
