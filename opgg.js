@@ -106,6 +106,41 @@ function rows(raw, key, n) {
   return out;
 }
 
+// Summoner spells: rows are "spell_table_N"; inside a row the two spells are the
+// "spell_0" / "spell_1" slots with metaId = Riot summoner spell id.
+function spellRows(raw, n) {
+  const out = [];
+  for (let k = 0; k < n; k++) {
+    const i = raw.indexOf(`"spell_table_${k}"`);
+    if (i < 0) break;
+    const j = raw.indexOf(`"spell_table_${k + 1}"`, i + 5);
+    const seg = raw.slice(i, j > i ? j : i + 4000);
+    const ids = [];
+    for (const mm of seg.matchAll(/"metaId":(\d+),"metaType":"spell"/g)) { const id = Number(mm[1]); if (!ids.includes(id)) ids.push(id); }
+    if (ids.length) out.push(ids.slice(0, 2));
+  }
+  return out;
+}
+// Skills: the max order is the first "skill_0..2" slots (extraData Q/W/E); the
+// 18-level sequence is a run of numbered <span key="0..17"> rows with a letter.
+function skillData(raw) {
+  const order = [];
+  for (const mm of raw.matchAll(/"metaType":"skill","metaId":"[a-z]+","extraData":"([QWER])"/g)) {
+    if (!order.includes(mm[1])) order.push(mm[1]);
+    if (order.length >= 3) break;
+  }
+  const levels = [];
+  const re = /\["\$","span","(\d+)",\{"className":"inline-flex flex-col items-center gap-0\.5[^"]*","children":\["\$undefined",\["\$","strong",null,\{[^}]*?"children":"([QWER])"\}\]\]\}\]/g;
+  let mm;
+  while ((mm = re.exec(raw))) {
+    const idx = Number(mm[1]);
+    if (idx !== levels.length) { if (idx === 0 && levels.length) break; continue; }
+    levels.push(mm[2]);
+    if (levels.length >= 18) break;
+  }
+  return { order, levels: levels.length === 18 ? levels : [] }; // partial runs skip levels: not shown
+}
+
 const cache = new Map();
 async function fetchRaw(url) {
   const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9' } });
@@ -127,11 +162,12 @@ async function modeData(mode, champ) {
     mode: m, champ,
     augments: m === 'arena' ? arenaAugments(augRaw) : mayhemAugments(augRaw),
     build: {
-      // Only the parts that parse reliably: core rows and the first boots / starter row
-      // (spell and skill rows are split across lazily loaded chunks).
+      // Core rows and the first boots / starter row (later rows mix in other tables).
       core: rows(buildRaw, 'core_items', 4),
       starter: rows(buildRaw, 'starter_items', 1),
       boots: (rows(buildRaw, 'boots', 1)[0] || []).slice(0, 1),
+      spells: spellRows(buildRaw, 2),
+      skills: skillData(buildRaw),
     },
     source: base,
   };

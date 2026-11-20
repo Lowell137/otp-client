@@ -2114,6 +2114,9 @@ const MODES_CSS = `
 #otp-modes .md-aug.r1{border-left:3px solid #b8c4cc}
 #otp-modes .md-aug.r4{border-left:3px solid #e8b84b}
 #otp-modes .md-aug.r8{border-left:3px solid #c46bff}
+#otp-modes .md-skills b,#otp-modes .md-levels b{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:7px;color:#fff;font-weight:800;font-size:14px}
+#otp-modes .md-levels{gap:3px}
+#otp-modes .md-levels b{width:22px;height:22px;font-size:11px;border-radius:5px}
 #otp-modes .md-empty{color:var(--lightText,#c2baaf);padding:6px 0}
 `;
 function modeTabRow() {
@@ -2180,6 +2183,15 @@ async function renderModes() {
   const buildHtml = (b.core || []).length
     ? `<div class="md-sec"><h5>Core build</h5><div class="md-builds">${b.core.slice(0, 3).map(row).join('')}${(b.boots || []).length ? `<div class="md-row"><span class="md-rank">Boots</span><img src="${itemIcon(b.boots[0])}" alt=""></div>` : ''}${(b.starter || [])[0] ? `<div class="md-row"><span class="md-rank">Start</span>${b.starter[0].map((id) => `<img src="${itemIcon(id)}" alt="">`).join('')}</div>` : ''}</div></div>`
     : '';
+  // Summoner spells (op.gg ids) and skill max order.
+  const SPELL_KEY = { 1: 'SummonerBoost', 3: 'SummonerExhaust', 4: 'SummonerFlash', 6: 'SummonerHaste', 7: 'SummonerHeal', 11: 'SummonerSmite', 12: 'SummonerTeleport', 13: 'SummonerMana', 14: 'SummonerDot', 21: 'SummonerBarrier', 32: 'SummonerSnowball' };
+  const spellIcon = (id) => (SPELL_KEY[id] ? `https://opgg-static.akamaized.net/meta/images/lol/latest/spell/${SPELL_KEY[id]}.png` : '');
+  const sk = (b.skills && b.skills.order) || [];
+  const lv = (b.skills && b.skills.levels) || [];
+  const SK_COL = { Q: '#b4335a', W: '#6a3fb0', E: '#2563a8', R: '#b36a12' };
+  const spellsHtml = (b.spells || []).length || sk.length
+    ? `<div class="md-sec"><h5>Spells &amp; skills</h5><div class="md-builds">${(b.spells || []).slice(0, 2).map((ids, i) => `<div class="md-row"><span class="md-rank">${i + 1}</span>${ids.map((id) => spellIcon(id) ? `<img src="${spellIcon(id)}" alt="">` : '').join('')}</div>`).join('')}${sk.length ? `<div class="md-row md-skills"><span class="md-rank">Max</span>${sk.map((k, i) => (i ? '<span class="arr">›</span>' : '') + `<b style="background:${SK_COL[k]}">${k}</b>`).join('')}</div>` : ''}${lv.length ? `<div class="md-row md-levels">${lv.map((k, i) => `<b title="Level ${i + 1}" style="background:${SK_COL[k]}">${k}</b>`).join('')}</div>` : ''}</div></div>`
+    : '';
   const augs = (d.augments || []).filter((a) => modeFilter === 'all' || String(a.rarity) === modeFilter);
   const byTier = [0, 1, 2, 3, 4].map((t) => augs.filter((a) => a.tier === t));
   const stat = (a) => (modeOpen === 'arena' ? `${a.wr.toFixed(1)}% WR · ${a.games} games` : `${a.pick.toFixed(1)}% picked`);
@@ -2187,6 +2199,7 @@ async function renderModes() {
   const rarities = [['all', 'All'], ['1', 'Silver'], ['4', 'Gold'], ['8', 'Prism']];
   panel.innerHTML = `<div class="md-head"><span class="md-title">${lobbyEsc(champ)} · ${title}</span><span class="md-src">op.gg · ${modeOpen === 'arena' ? 'tiers from win rate and games on this champion' : 'tiers for this champion'}</span><button class="md-x" title="Close">×</button></div>
     ${buildHtml}
+    ${spellsHtml}
     <div class="md-sec"><h5>Augments for ${lobbyEsc(champ)}<span class="md-filters">${rarities.map(([v, l]) => `<button data-rf="${v}" class="${modeFilter === v ? 'on' : ''}">${l}</button>`).join('')}</span></h5>${augHtml || '<div class="md-empty">No augment data.</div>'}</div>`;
 }
 
