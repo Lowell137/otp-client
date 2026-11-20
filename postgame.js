@@ -74,7 +74,7 @@ function createPostGameWatch({ getCreds, request, champIdToName, getLobby, readS
     const qid = card.queueId === 440 ? 440 : card.queueId === 420 ? 420 : 0;
     if (!qid || !before?.ranked?.[qid]) return null;
     const b = before.ranked[qid];
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 15; i++) { // ranks update 10-60 s after the game
       const now = (await rankedQueues(creds, before.puuid).catch(() => ({})))[qid];
       if (now && (now.wins + now.losses) !== (b.wins + b.losses)) {
         const x = ladder(b), y = ladder(now);
@@ -89,8 +89,51 @@ function createPostGameWatch({ getCreds, request, champIdToName, getLobby, readS
     return null;
   }
 
+  // End-of-game screen data: there the moment the game ends (the match history
+  // takes 30 s to 2 min). Stat keys come uppercase (CHAMPIONS_KILLED ...) in the
+  // client, lowercase in some versions, so read both.
+  const EOG_QUEUE = { RANKED_SOLO_5x5: 420, RANKED_FLEX_SR: 440, NORMAL: 400, ARAM_UNRANKED_5x5: 450 };
+  async function cardFromEog(creds) {
+    let e = null;
+    try { e = await lcu(creds, '/lol-end-of-game/v1/eog-stats-block'); } catch { return null; }
+    const lp = e && (e.localPlayer || null);
+    if (!lp || !lp.championId) return null;
+    const st = lp.stats || {};
+    const n = (...ks) => { for (const k of ks) { const v = st[k]; if (typeof v === 'number') return v; } return 0; };
+    const items = Array.isArray(lp.items) && lp.items.length ? lp.items.slice(0, 7) : [0, 1, 2, 3, 4, 5, 6].map((i) => n('ITEM' + i, 'item' + i));
+    while (items.length < 7) items.push(0);
+    let win = n('WIN', 'win') === 1 || st.WIN === true || st.win === true;
+    for (const t of e.teams || []) {
+      if ((t.players || []).some((p) => p.isLocalPlayer || (lp.puuid && p.puuid === lp.puuid) || (lp.summonerId && p.summonerId === lp.summonerId))) {
+        if (typeof t.isWinningTeam === 'boolean') win = t.isWinningTeam;
+      }
+    }
+    const qid = typeof e.queueId === 'number' ? e.queueId : (EOG_QUEUE[e.queueType] ?? (e.queueType === 'RANKED_SOLO_5x5' ? 420 : 0));
+    return {
+      gameId: e.gameId || 0, ts: Date.now(),
+      queueId: qid, queue: QUEUE[qid] || String(e.gameMode || e.queueType || 'Game').replace(/_/g, ' '),
+      dur: e.gameLength || 0, win, champ: (await champIdToName(lp.championId)) || '', level: n('LEVEL', 'champLevel', 'level'),
+      k: n('CHAMPIONS_KILLED', 'kills'), d: n('NUM_DEATHS', 'deaths'), a: n('ASSISTS', 'assists'),
+      cs: n('MINIONS_KILLED', 'totalMinionsKilled') + n('NEUTRAL_MINIONS_KILLED', 'neutralMinionsKilled'),
+      gold: n('GOLD_EARNED', 'goldEarned'), dmg: n('TOTAL_DAMAGE_DEALT_TO_CHAMPIONS', 'totalDamageDealtToChampions'), vision: n('VISION_SCORE', 'visionScore'),
+      items, spells: [lp.spell1Id, lp.spell2Id].filter(Boolean), keystone: n('PERK0', 'perk0'), sub: n('PERK_SUB_STYLE', 'perkSubStyle'),
+      role: before?.role || '', opp: before?.opp || '', lp: null, fromEog: true,
+    };
+  }
+
   async function finish(creds) {
-    // Up to ~2 minutes for the game to appear in the match history.
+    // Fast path: the end-of-game screen data, polled for ~30 s after the game ends.
+    for (let i = 0; i < 20; i++) {
+      const card = await cardFromEog(creds).catch(() => null);
+      if (card && card.champ) {
+        publish(card);
+        card.lp = await lpChange(creds, card);
+        if (card.lp) publish(card);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    // Fallback: up to ~2 minutes for the game to appear in the match history.
     for (let i = 0; i < 24; i++) {
       const g = await newestGame(creds, before.puuid).catch(() => null);
       if (g && g.gameId && g.gameId !== before.gameId) {
