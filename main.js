@@ -638,8 +638,8 @@ let overlayDragging = false;
 
 // ---- Auto update (GitHub releases of Lowell137/otp-client via electron-updater) ----
 // Packaged builds only. Checks on start and every 4 hours, downloads in the
-// background and installs silently (no installer window, no prompt) when the app
-// quits. "Restart to update" in Settings installs right away, also silently.
+// background, then asks to restart; "Later" installs on the next quit. Installs are
+// silent (isSilent=true): no installer window, the app just restarts on the new version.
 // The state is pushed to the pages ('otp:update-state') for the settings menu
 // ("Check for updates") and the round progress badge.
 let updState = { state: 'idle' };
@@ -690,6 +690,21 @@ function setupAutoUpdate() {
   autoUpdater.on('update-available', (i) => { console.log('[otp] update available:', i?.version); setUpdState({ state: 'downloading', version: i?.version, percent: 0 }); });
   autoUpdater.on('download-progress', (p) => setUpdState({ state: 'downloading', version: updState.version, percent: Math.max(0, Math.min(100, Math.round(p?.percent || 0))) }));
   autoUpdater.on('update-downloaded', (info) => setUpdState({ state: 'ready', version: info?.version || updState.version, percent: 100 }));
+  let asked = false;
+  autoUpdater.on('update-downloaded', async (info) => {
+    if (asked || !win || win.isDestroyed()) return;
+    asked = true;
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'info',
+      title: 'OTP Client',
+      message: `Update ${info?.version || ''} is ready`,
+      detail: 'Restart now to install it, or it will be installed when you close the app.',
+      buttons: ['Restart now', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response === 0) setImmediate(() => autoUpdater.quitAndInstall(true, true));
+  });
   const check = () => autoUpdater.checkForUpdates().catch((e) => console.warn('[otp] update check failed:', e?.message || e));
   setTimeout(check, 5000);
   setInterval(check, 4 * 60 * 60 * 1000);
