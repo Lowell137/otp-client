@@ -5,7 +5,7 @@ const QUEUES = { 420: 'Ranked Solo', 440: 'Ranked Flex', 400: 'Normal Draft', 43
 
 module.exports = {
   name: 'player_matches',
-  description: "A player's most recent matches: champion, role, win/loss, KDA, CS, game length, queue and AI score (0-100). Give a Riot ID (Name#TAG) or the champion the player is on in the current game.",
+  description: "A player's most recent matches: champion, role, win/loss, KDA, CS, game length, queue and AI score (0-100). Leave both out for my own account. Or give a Riot ID (Name#TAG), or the champion the player is on in the current game.",
   parameters: {
     type: 'object',
     properties: {

@@ -221,13 +221,50 @@
     current_game: 'Checking the current game', player_profile: 'Looking up the player', player_matches: 'Reading match history',
     recommend_items: 'Checking the enemy team', tier_list: 'Reading the tier list', suggest_pick: 'Finding picks', last_game: 'Loading the game', duo_synergy: 'Checking duo synergy', champion_build: 'Getting the build', patch_notes: 'Reading patch notes', lol_wiki: 'Searching the wiki', read_page: 'Reading a page',
   };
-  const EMPTY = `<div id="empty"><h2>Ask about your game</h2>
-    <div>Players, ranks, match history and items against the enemy team, from deeplol and the League client. Add a screenshot with +.</div>
-    <div class="chips">
-      <button data-ex="Who is on the enemy team and what are their ranks?">Who is on the enemy team?</button>
-      <button data-ex="What is the enemy Ezreal's rank and recent form?">Enemy Ezreal's rank</button>
-      <button data-ex="Which boots and defensive items should I buy this game?">Which boots should I buy?</button>
-    </div></div>`;
+  // Start screen: suggestions follow what you are doing (out of game, champion
+  // select, in game) and name your champion / lane opponent when known.
+  function suggestions(c) {
+    const me = c.champ || 'my champion';
+    if (c.phase === 'select') return {
+      title: 'Champion select',
+      sub: c.champ ? `You are on ${c.champ}${c.role ? ' ' + c.role : ''}.` : 'Pick help from the current tier list.',
+      chips: [
+        [c.role ? `Suggest a strong pick for ${c.role}` : 'Suggest a strong pick for my role', c.role ? `Suggest a strong champion to pick for ${c.role} that is not banned or taken` : 'Suggest a strong champion to pick for my role that is not banned or taken'],
+        ...(c.champ ? [[`Runes and build for ${c.champ}`, `What runes, items, spells and skill order should I use on ${c.champ}${c.role ? ' ' + c.role : ''}?`]] : []),
+        ...(c.champ && (c.role === 'supp' || c.role === 'bot') ? [[`Best ${c.role === 'supp' ? 'ADC' : 'support'} with ${c.champ}`, `Which ${c.role === 'supp' ? 'ADC' : 'support'} goes best with ${c.champ}?`]] : []),
+        ['Who is on the enemy team?', 'Who is on the enemy team and what are their ranks?'],
+      ],
+    };
+    if (c.phase === 'game') return {
+      title: 'In game',
+      sub: `${c.champ ? `${c.champ}` : 'Your game'}${c.opp ? ` vs ${c.opp}` : ''}.`,
+      chips: [
+        ['Boots and defensive items', 'Which boots and defensive items should I buy against the enemy team?'],
+        [`Build for ${me}`, `What is the build for ${me}?`],
+        ...(c.opp ? [[`My lane opponent ${c.opp}`, `What is the enemy ${c.opp}'s rank and recent form?`]] : [['Enemy ranks', 'What are the enemy players\' ranks?']]),
+      ],
+    };
+    return {
+      title: 'Ask about League',
+      sub: 'Builds, picks, players, patch changes and reviews of your games, with live data. Add a screenshot with +.',
+      chips: [
+        ['Review my last game', 'Review my last game: what should I have bought and done differently?'],
+        ['Strongest champions right now', 'What are the strongest champions this patch for each role?'],
+        ['What changed in the latest patch?', 'What changed in the latest patch?'],
+        ['My recent form', 'How have my last 10 games gone?'],
+      ],
+    };
+  }
+  let EMPTY = '';
+  async function refreshEmpty() {
+    let c = { phase: 'idle' };
+    try { c = await window.otpAI.context(); } catch {}
+    const s = suggestions(c || { phase: 'idle' });
+    EMPTY = `<div id="empty"><h2>${esc(s.title)}</h2><div>${esc(s.sub)}</div>
+      <div class="chips">${s.chips.map(([label, ask]) => `<button data-ex="${esc(ask)}">${esc(label)}</button>`).join('')}</div></div>`;
+    const cur = document.getElementById('empty');
+    if (cur) cur.outerHTML = EMPTY;
+  }
 
   // Small Markdown: bold, inline code, lists, paragraphs (HTML escaped first).
   function md(s) {
@@ -267,7 +304,8 @@
     return d;
   }
   function showChat() {
-    log.innerHTML = history.length ? '' : EMPTY;
+    log.innerHTML = history.length ? '' : (EMPTY || '<div id="empty"></div>');
+    if (!history.length) refreshEmpty();
     for (const m of history) addMsg(m.role, m.content, (m.files || []).map((n) => ({ name: n })));
     try { localStorage.setItem('otp.ai.current', chatId); } catch {}
   }

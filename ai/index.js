@@ -20,6 +20,14 @@ function register({ ipcMain, ctx }) {
   ipcMain.handle('otp:ai-config-get', () => config.publicView(config.load()));
   ipcMain.handle('otp:ai-config-set', (_e, patch) => config.publicView(config.update(patch || {})));
   ipcMain.handle('otp:ai-tools', () => tools.all().map((t) => ({ name: t.name, description: t.description })));
+  // What the user is doing (for the start screen's suggestions).
+  ipcMain.handle('otp:ai-context', () => {
+    const lob = ctx.getLobby ? ctx.getLobby() : null;
+    if (!lob || !lob.phase) return { phase: 'idle' };
+    const role = lob.me?.role || '';
+    const opp = role ? (lob.enemies || []).find((p) => p.role === role && p.champ)?.champ || '' : '';
+    return { phase: lob.phase === 'InGame' ? 'game' : 'select', champ: lob.me?.champ || '', role, opp };
+  });
 
   ipcMain.handle('otp:ai-models', async () => {
     try { return { ok: true, models: await providers.current().models() }; }

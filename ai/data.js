@@ -110,8 +110,14 @@ async function resolvePlayer(ctx, args) {
     who = { name: r.player.name, tag: r.player.tag };
   }
   if (!who && args.riotId) return { error: 'Riot ID must look like Name#TAG.' };
+  // No player named: the user themself (account logged in to the League client).
+  let myRegion = '';
+  if (!who) {
+    const acc = await ctx.call('otp:my-account').catch(() => null);
+    if (acc?.name) { who = { name: acc.name, tag: acc.tag }; myRegion = acc.region || ''; }
+  }
   if (!who) return { error: 'Give a Riot ID (Name#TAG) or the champion the player is on in the current game.' };
-  const platform = await region(ctx, args.region);
+  const platform = await region(ctx, args.region || myRegion);
   const res = await profile(ctx, who.name, who.tag, platform);
   if (!res?.ok) return { error: `Could not find ${who.name}#${who.tag} on ${platform.toUpperCase()}: ${res?.error || 'unknown error'}` };
   return { res, platform, who };
