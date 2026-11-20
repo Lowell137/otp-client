@@ -1372,10 +1372,14 @@ let msLookups = null;
 let msLoadedKey = '';
 let msLoading = false;
 let msFilters = { enemy: '', lane: '', laneGold: 1000, keystone: '', sub: '', spell: '', item: '', len: '', tier: '', region: '', result: '' };
-let msOpen = (() => { try { return localStorage.getItem('otp.msOpen') !== '0'; } catch { return true; } })();
+let msOpen = (() => { try { return localStorage.getItem('otp.msOpen') === '1'; } catch { return false; } })();
 
 const MS_CSS = `
 #otp-msearch{background:var(--fg,#212324);border:1px solid var(--border-light,#2c2f31);border-radius:10px;margin:10px 0 0;color:var(--text,#e8e6e3);font-size:13px;box-sizing:border-box}
+#otp-msearch.closed{display:none}
+#otp-ms-toggle{margin-left:auto;align-self:center;display:inline-flex;align-items:center;gap:7px;background:transparent;border:1px solid var(--border-light,#2c2f31);color:var(--text,#e8e6e3);border-radius:8px;padding:8px 13px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+#otp-ms-toggle:hover{background:var(--hover,#1b1d1e);border-color:var(--border,#656e73)}
+#otp-ms-toggle.on{background:var(--blue,#1063b7);border-color:var(--blue,#1063b7);color:#fff}
 #otp-msearch .ms-head{display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none}
 #otp-msearch .ms-title{font-weight:700;font-size:15px}
 #otp-msearch .ms-sub{color:var(--lightText,#c2baaf);font-size:12px}
@@ -1589,6 +1593,8 @@ function renderSearchPanel() {
   }
   if (card.nextElementSibling !== panel) card.after(panel);
   panel.classList.toggle('closed', !msOpen);
+  msMountToggle(card);
+  if (!msOpen) { panel.innerHTML = ''; return; }
 
   const champ = msChamp();
   const f = msFilters;
@@ -1646,28 +1652,37 @@ function renderSearchPanel() {
         <div class="ms-box"><h5>Summoner spells</h5>${msOptRows(spells, (k) => k.split('|').map((id) => img(msSpellIcon(id))).join(''), (k) => k.split('|').map(msName.spell).join(' + '), 4)}</div>
         <div class="ms-box"><h5>Items</h5>${msOptRows(items, (k) => img(msItemIcon(k)), msName.item, 6)}</div>
         ${f.enemy ? '' : `<div class="ms-box"><h5>Lane opponents</h5>${msOptRows(vs, (k) => img(msChampIcon(k)), msName.champ, 6)}</div>`}
-      </div>
-      <div class="ms-games">${games.slice(0, 12).map((g) => `<div class="ms-game${g.win ? ' win' : ''}">
-          <span class="res">${g.win ? 'Win' : 'Loss'}<div class="ms-k">${Math.round(g.dur / 60)}m</div></span>
-          ${g.enemy ? `<img src="${msChampIcon(g.enemy)}" alt="" title="vs ${lobbyEsc(msName.champ(g.enemy))}" style="width:30px;height:30px;border-radius:6px">` : '<span></span>'}
-          <span class="who">${lobbyEsc(g.player)}<div class="g">${lobbyEsc(g.tier)} · ${lobbyEsc(g.region)} · ${g.k}/${g.d}/${g.a}${g.gd15 != null ? ` · ${g.gd15 >= 0 ? '+' : ''}${g.gd15}g @15` : ''}</div></span>
-          <span class="ms-ics">${img(msRuneIcon(g.keystone, 'keystone'), 'round')}${g.spells.map((s) => img(msSpellIcon(s))).join('')}</span>
-          <span class="ms-ics">${g.items.filter(msIsCore).slice(0, 5).map((id) => img(msItemIcon(id))).join('')}</span>
-        </div>`).join('')}</div>`;
+      </div>`;
   }
   panel.innerHTML = `${head}<div class="ms-body"><div class="ms-filters">${filters}</div>
     <div class="ms-row"><button class="ms-btn" data-reset="1">Clear filters</button><span class="ms-k">Filters work on the recent games onetricks shows for this champion; only the lane opponent is known per game, not full team comps.</span></div>
     ${body}</div>`;
 }
 
-function onSearchClick(e) {
-  if (e.target.closest('[data-toggle]')) {
-    msOpen = !msOpen;
-    try { localStorage.setItem('otp.msOpen', msOpen ? '1' : '0'); } catch {}
-    renderSearchPanel();
-    if (msOpen) msLoad();
-    return;
+// "Match Search" toggle in the empty right end of the site's filter row (Region /
+// role / vs / VODs / patch). The panel opens right under the filter card.
+function msMountToggle(card) {
+  const row = card && card.id !== 'otp-msearch' && /Region/.test(card.textContent) ? card.firstElementChild : null;
+  let btn = document.getElementById('otp-ms-toggle');
+  if (!row) { btn?.remove(); return; }
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.id = 'otp-ms-toggle';
+    btn.type = 'button';
+    btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); msToggle(); });
   }
+  if (btn.parentElement !== row) row.appendChild(btn);
+  btn.classList.toggle('on', msOpen);
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><span>Match Search</span>';
+}
+function msToggle() {
+  msOpen = !msOpen;
+  try { localStorage.setItem('otp.msOpen', msOpen ? '1' : '0'); } catch {}
+  renderSearchPanel();
+  if (msOpen) msLoad();
+}
+function onSearchClick(e) {
+  if (e.target.closest('[data-toggle]')) { msToggle(); return; }
   if (e.target.closest('[data-reset]')) {
     const enemyBefore = msFilters.enemy;
     msFilters = { enemy: '', lane: '', laneGold: msFilters.laneGold, keystone: '', sub: '', spell: '', item: '', len: '', tier: '', region: '', result: '' };
@@ -1755,7 +1770,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const needsLobby = isBuild && !!lobbyState && !document.getElementById("otp-lobby");
     const msEl = document.getElementById("otp-msearch");
     const msCard = isBuild && siteFilterCard();
-    const needsSearch = isBuild && (!msEl || (msCard && msCard.nextElementSibling !== msEl));
+    const needsSearch = isBuild && (!msEl || (msCard && (msCard.nextElementSibling !== msEl || !document.getElementById("otp-ms-toggle"))));
     if (otpPro !== true && !window._otpProRaf) window._otpProRaf = requestAnimationFrame(() => { window._otpProRaf = 0; applyPro(); });
     if (needsHeader || needsFloat || needsTier || needsLobby || needsSearch) requestMountUI(80);
 
