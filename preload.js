@@ -876,6 +876,7 @@ function mountUI() {
   injectTierNav();
   checkPendingAutoImport();
   renderLobbyPanel();
+  mountSearchPanel();
 }
 
 // ---- Instant Auto-Import on any rune / set / filter selection ----
@@ -885,7 +886,7 @@ document.addEventListener('click', (e) => {
   if (!target) return;
 
   // Ignore clicks inside our own header bar, floating settings, or popover
-  if (target.closest('#otp-header-actions') || target.closest('#otp-float-settings') || target.closest('.otp-popover') || target.closest('#otp-lobby')) return;
+  if (target.closest('#otp-header-actions') || target.closest('#otp-float-settings') || target.closest('.otp-popover') || target.closest('#otp-lobby') || target.closest('#otp-msearch')) return;
 
   if (!location.pathname.includes('/champions/builds/')) return;
 
@@ -1122,7 +1123,6 @@ const LOBBY_CSS = `
 #otp-lobby .lb-btn:hover{background:var(--hover,#1b1d1e);border-color:var(--border,#656e73)}
 #otp-lobby .lb-btn.primary{background:var(--blue,#1063b7);border-color:var(--blue,#1063b7);color:#fff}
 #otp-lobby .lb-btn.primary:hover{filter:brightness(1.1)}
-#otp-lobby .lb-pro{background:#6d3fd1;color:#fff;border-radius:4px;padding:0 5px;font-size:10px;font-weight:800;letter-spacing:.04em}
 #otp-lobby .lb-btn img{width:16px;height:16px;border-radius:4px}
 #otp-lobby .lb-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media (max-width:900px){#otp-lobby .lb-cols{grid-template-columns:1fr}}
@@ -1235,7 +1235,6 @@ function renderLobbyPanel() {
   const myRole = st.me?.role || '';
   const curMatchup = (params.get('matchup') || params.get('adv_e' + (ADV_SUFFIX[myRole] || 'x')) || '').toLowerCase();
   const opp = myRole ? (st.enemies || []).find((e) => e.role === myRole && e.champ) : null;
-  const advCount = [...(st.enemies || []), ...(st.allies || []).filter((a) => !a.me)].filter((p) => p.champ && ADV_SUFFIX[p.role]).length;
 
   const row = (p, side) => {
     const on = side === 'enemy' && p.champ && p.champ.toLowerCase() === curMatchup;
@@ -1259,8 +1258,7 @@ function renderLobbyPanel() {
       <span class="lb-sub">Rank, and win rate / games on their pick in the last 20</span>
       <div class="lb-acts">
         ${opp ? `<button class="lb-btn${oppOn ? '' : ' primary'}" data-vs="${lobbyEsc(opp.champ)}"><img src="${lobbyIcon(opp.champ)}" alt="">Build vs ${lobbyEsc(opp.champ)}</button>` : ''}
-        ${advCount ? '<button class="lb-btn" data-adv="1" title="Fills onetricks Advanced Search with both team comps. Running the search needs onetricks Pro.">Vs their team <span class="lb-pro">PRO</span></button>' : ''}
-        ${/[?&](matchup|adv_)/.test(location.search) ? '<button class="lb-btn" data-clear="1">All matchups</button>' : ''}
+        ${/[?&]matchup=/.test(location.search) ? '<button class="lb-btn" data-clear="1">All matchups</button>' : ''}
       </div>
     </div>
     <div class="lb-cols">
@@ -1294,6 +1292,335 @@ function onLobbyClick(e) {
 }
 ipcRenderer.on('otp:lobby-state', (_e, s) => { lobbyState = s; renderLobbyPanel(); });
 ipcRenderer.invoke('otp:lobby-get').then((s) => { if (s) { lobbyState = s; renderLobbyPanel(); } }).catch(() => {});
+
+// ---- Match search (build pages): our own filter over the games the site shows ----
+// The build page data carries the champion's recent high-elo games (100 for all
+// regions, 65 per region, 40 per matchup). We load the page's own variants (all,
+// KR, EUW1, NA1, and the same with ?matchup= when a lane opponent is picked),
+// dedupe, and filter/aggregate locally: lane opponent, laning @15, keystone,
+// secondary tree, spells, item bought, game length, rank, region, result.
+// Data limits: only the lane opponent is known per game (no full team comps).
+const MS_REGIONS = ['', 'KR', 'EUW1', 'NA1'];
+const MS_BOOTS = new Set([1001, 3005, 3006, 3009, 3010, 3013, 3020, 3047, 3111, 3117, 3158, 2422]);
+const msCache = new Map(); // url -> Promise<pageProps|null>
+let msGames = [];
+let msLookups = null;
+let msLoadedKey = '';
+let msLoading = false;
+let msFilters = { enemy: '', lane: '', laneGold: 1000, keystone: '', sub: '', spell: '', item: '', len: '', tier: '', region: '', result: '' };
+let msOpen = (() => { try { return localStorage.getItem('otp.msOpen') !== '0'; } catch { return true; } })();
+
+const MS_CSS = `
+#otp-msearch{background:var(--fg,#212324);border:1px solid var(--border-light,#2c2f31);border-radius:10px;margin:0 0 16px;color:var(--text,#e8e6e3);font-size:13px;box-sizing:border-box}
+#otp-msearch .ms-head{display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none}
+#otp-msearch .ms-title{font-weight:700;font-size:15px}
+#otp-msearch .ms-sub{color:var(--lightText,#c2baaf);font-size:12px}
+#otp-msearch .ms-chev{margin-left:auto;transition:transform .15s;color:var(--lightText,#c2baaf)}
+#otp-msearch.closed .ms-chev{transform:rotate(-90deg)}
+#otp-msearch.closed .ms-body{display:none}
+#otp-msearch .ms-body{padding:0 16px 14px}
+#otp-msearch .ms-filters{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px 12px;padding:12px 0;border-top:1px solid var(--border-light,#2c2f31);border-bottom:1px solid var(--border-light,#2c2f31)}
+#otp-msearch label.f{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--lightText,#c2baaf);font-weight:600;letter-spacing:.02em}
+#otp-msearch select{background:var(--bg,#181a1b);color:var(--text,#e8e6e3);border:1px solid var(--border-light,#2c2f31);border-radius:8px;padding:6px 8px;font:inherit;font-size:12.5px;outline:none}
+#otp-msearch select:focus{border-color:var(--blue,#1063b7)}
+#otp-msearch .ms-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+#otp-msearch .ms-btn{background:var(--fg-raised,#2c2e2f);border:1px solid var(--border-light,#2c2f31);color:var(--text,#e8e6e3);border-radius:8px;padding:6px 11px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+#otp-msearch .ms-btn:hover{background:var(--hover,#1b1d1e);border-color:var(--border,#656e73)}
+#otp-msearch .ms-sum{display:flex;gap:18px;align-items:baseline;flex-wrap:wrap;margin:14px 0 10px}
+#otp-msearch .ms-big{font-size:22px;font-weight:800}
+#otp-msearch .ms-k{color:var(--lightText,#c2baaf);font-size:12px}
+#otp-msearch .ms-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+#otp-msearch .ms-box{background:var(--bg,#181a1b);border:1px solid var(--border-light,#2c2f31);border-radius:10px;padding:10px 12px}
+#otp-msearch .ms-box h5{margin:0 0 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--lightText,#c2baaf)}
+#otp-msearch .ms-opt{display:flex;align-items:center;gap:8px;padding:4px 0}
+#otp-msearch .ms-opt+.ms-opt{border-top:1px solid rgba(255,255,255,.04)}
+#otp-msearch .ms-ics{display:flex;align-items:center;gap:3px;flex:none}
+#otp-msearch .ms-ics img{width:26px;height:26px;border-radius:6px;background:#111}
+#otp-msearch .ms-ics img.round{border-radius:50%}
+#otp-msearch .ms-ics .arr{color:var(--lightText,#c2baaf);font-size:11px;margin:0 1px}
+#otp-msearch .ms-nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:12px}
+#otp-msearch .ms-box.core .ms-nm{visibility:hidden}
+#otp-msearch .ms-st{margin-left:auto;text-align:right;font-size:12px;white-space:nowrap}
+#otp-msearch .ms-st .g{color:var(--lightText,#c2baaf)}
+#otp-msearch .wr-hi{color:#2fb96b}
+#otp-msearch .wr-lo{color:#e0605a}
+#otp-msearch .ms-games{margin-top:12px}
+#otp-msearch .ms-game{display:grid;grid-template-columns:44px 30px minmax(0,1.3fr) minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px 8px;border-radius:8px;border-left:3px solid #e0605a;background:rgba(224,96,90,.05)}
+#otp-msearch .ms-game.win{border-left-color:#4f9be8;background:rgba(79,155,232,.06)}
+#otp-msearch .ms-game+.ms-game{margin-top:4px}
+#otp-msearch .ms-game .res{font-weight:700;font-size:12px}
+#otp-msearch .ms-game .who{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+#otp-msearch .ms-game .who .g{color:var(--lightText,#c2baaf)}
+#otp-msearch .ms-empty{padding:18px 0 6px;color:var(--lightText,#c2baaf)}
+#otp-msearch .ms-note{margin-top:10px;font-size:11px;color:var(--lightText,#c2baaf)}
+`;
+
+function msChamp() { return lobbyChampOfPage(); }
+function msParseNext(html) {
+  const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (!m) return null;
+  try { return JSON.parse(m[1]).props.pageProps; } catch { return null; }
+}
+function msFetchPP(url) {
+  if (!msCache.has(url)) {
+    msCache.set(url, fetch(url, { credentials: 'include' })
+      .then((r) => (r.ok ? r.text() : ''))
+      .then((h) => (h ? msParseNext(h) : null))
+      .catch(() => null));
+  }
+  return msCache.get(url);
+}
+function msNorm(m, champKeys) {
+  const d = m.details || {}, pd = d.playerData || {}, st = pd.stats || {}, gr = m.gameRoles || {};
+  const finals = [0, 1, 2, 3, 4, 5].map((i) => st['item' + i]).filter(Boolean);
+  return {
+    id: m.regChampGameId, player: m.summonerName || '', tier: m.tier || '', region: m.platformId || '',
+    ts: m.timestamp || 0, patch: m.p || '', win: !!st.win,
+    k: st.kills || 0, d: st.deaths || 0, a: st.assists || 0, cs: st.cs || 0,
+    dur: d.gameDuration || 0, role: gr.playerRole || '',
+    enemy: champKeys[String(gr.enemyChampion)] || '', gd15: typeof gr.gd15 === 'number' ? gr.gd15 : null,
+    keystone: st.perk0 || 0, sub: st.perkSubStyle || 0,
+    spells: [pd.spell1Id, pd.spell2Id].filter(Boolean).sort((a, b) => a - b),
+    items: finals, ordered: (m.timeline && m.timeline.orderedItems) || [],
+  };
+}
+async function msLoad(force) {
+  const champ = msChamp();
+  if (!champ) return;
+  const params = new URLSearchParams(location.search);
+  const role = params.get('role') || '';
+  const key = champ + '|' + role + '|' + msFilters.enemy;
+  if (!force && key === msLoadedKey) return;
+  msLoading = true; renderSearchPanel();
+  const base = `/champions/builds/${encodeURIComponent(champ)}`;
+  const urls = [];
+  for (const r of MS_REGIONS) {
+    const q = new URLSearchParams();
+    if (role) q.set('role', role);
+    if (r) q.set('region', r);
+    urls.push(base + (q.toString() ? '?' + q : ''));
+    if (msFilters.enemy) {
+      const q2 = new URLSearchParams(q); q2.set('matchup', msFilters.enemy);
+      urls.push(base + '?' + q2);
+    }
+  }
+  const pps = await Promise.all(urls.map(msFetchPP));
+  const own = (() => { try { return JSON.parse(document.getElementById('__NEXT_DATA__').textContent).props.pageProps; } catch { return null; } })();
+  const all = [own, ...pps].filter(Boolean);
+  const look = all.find((p) => p.championKeys && p.runes) || own || {};
+  msLookups = {
+    champKeys: look.championKeys || {}, champData: look.championData || {}, runes: look.runes || {},
+    spells: look.summonerSpells || {}, items: look.itemData || {},
+  };
+  const seen = new Map();
+  for (const p of all) for (const m of p.matchHistory || []) {
+    if (m && m.regChampGameId && !seen.has(m.regChampGameId)) seen.set(m.regChampGameId, msNorm(m, msLookups.champKeys));
+  }
+  msGames = [...seen.values()].sort((a, b) => b.ts - a.ts);
+  msLoadedKey = key;
+  msLoading = false;
+  renderSearchPanel();
+}
+
+const msDd = () => lobbyDdVer;
+const msItemIcon = (id) => `https://ddragon.leagueoflegends.com/cdn/${msDd()}/img/item/${id}.png`;
+const msChampIcon = (k) => `https://ddragon.leagueoflegends.com/cdn/${msDd()}/img/champion/${k}.png`;
+function msSpellIcon(id) { const s = msLookups?.spells?.[id]; return s ? `https://ddragon.leagueoflegends.com/cdn/${msDd()}/img/spell/${s.image}` : ''; }
+function msRuneIcon(id, kind) { const r = msLookups?.runes?.[kind]?.[id]; return r ? `https://ddragon.leagueoflegends.com/cdn/img/${r.icon}` : ''; }
+const msName = {
+  champ: (k) => msLookups?.champData?.[k]?.name || k,
+  keystone: (id) => msLookups?.runes?.keystone?.[id]?.name || String(id),
+  sub: (id) => msLookups?.runes?.subStyle?.[id]?.name || String(id),
+  spell: (id) => msLookups?.spells?.[id]?.name || String(id),
+  item: (id) => msLookups?.items?.[id]?.name || String(id),
+};
+function msIsCore(id) { const it = msLookups?.items?.[id]; return !!it && !MS_BOOTS.has(Number(id)) && (it.gold || 0) >= 2200; }
+
+function msApply(games, f, skip) {
+  return games.filter((g) => {
+    if (skip !== 'enemy' && f.enemy && g.enemy !== f.enemy) return false;
+    if (skip !== 'lane' && f.lane) {
+      if (g.gd15 == null) return false;
+      if (f.lane === 'ahead' && g.gd15 < f.laneGold) return false;
+      if (f.lane === 'behind' && g.gd15 > -f.laneGold) return false;
+      if (f.lane === 'even' && Math.abs(g.gd15) >= f.laneGold) return false;
+    }
+    if (skip !== 'keystone' && f.keystone && String(g.keystone) !== f.keystone) return false;
+    if (skip !== 'sub' && f.sub && String(g.sub) !== f.sub) return false;
+    if (skip !== 'spell' && f.spell && !g.spells.includes(Number(f.spell))) return false;
+    if (skip !== 'item' && f.item && !g.items.includes(Number(f.item)) && !g.ordered.includes(Number(f.item))) return false;
+    if (skip !== 'len' && f.len) {
+      const m = g.dur / 60;
+      if (f.len === 'short' && m >= 20) return false;
+      if (f.len === 'med' && (m < 20 || m >= 30)) return false;
+      if (f.len === 'long' && m < 30) return false;
+    }
+    if (skip !== 'tier' && f.tier && g.tier !== f.tier) return false;
+    if (skip !== 'region' && f.region && g.region !== f.region) return false;
+    if (skip !== 'result' && f.result && (f.result === 'win') !== g.win) return false;
+    return true;
+  });
+}
+function msCount(games, keyFn) {
+  const m = new Map();
+  for (const g of games) for (const k of [].concat(keyFn(g))) {
+    if (k == null || k === '' || k === 0) continue;
+    const e = m.get(k) || { k, n: 0, w: 0 };
+    e.n++; if (g.win) e.w++;
+    m.set(k, e);
+  }
+  return [...m.values()].sort((a, b) => b.n - a.n);
+}
+const msWr = (e) => Math.round((e.w / Math.max(1, e.n)) * 100);
+const msWrCls = (wr, n) => (n < 3 ? '' : wr >= 55 ? 'wr-hi' : wr <= 45 ? 'wr-lo' : '');
+
+function msSelect(name, label, opts, val) {
+  return `<label class="f">${label}<select data-f="${name}">${opts.map(([v, t]) => `<option value="${lobbyEsc(v)}"${String(v) === String(val) ? ' selected' : ''}>${lobbyEsc(t)}</option>`).join('')}</select></label>`;
+}
+function msOptRows(list, icons, name, max = 5) {
+  if (!list.length) return '<div class="ms-k">No data</div>';
+  return list.slice(0, max).map((e) => {
+    const wr = msWr(e);
+    return `<div class="ms-opt" title="${lobbyEsc(name(e.k))}"><span class="ms-ics">${icons(e.k)}</span><span class="ms-nm">${lobbyEsc(name(e.k))}</span><span class="ms-st"><span class="${msWrCls(wr, e.n)}">${wr}%</span> <span class="g">${e.n}</span></span></div>`;
+  }).join('');
+}
+
+function renderSearchPanel() {
+  const isBuild = location.pathname.includes('/champions/builds/');
+  let panel = document.getElementById('otp-msearch');
+  if (!isBuild) { panel?.remove(); return; }
+  if (!document.getElementById('otp-msearch-css')) {
+    const s = document.createElement('style');
+    s.id = 'otp-msearch-css'; s.textContent = MS_CSS;
+    document.head.appendChild(s);
+  }
+  // Below the champion header card, above the site's build section.
+  const h1 = document.querySelector('h1');
+  if (!h1) return;
+  let card = h1;
+  while (card.parentElement && card.parentElement !== document.body) {
+    if (parseFloat(getComputedStyle(card).borderTopLeftRadius) >= 6 && card.getBoundingClientRect().width > 500) break;
+    card = card.parentElement;
+  }
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'otp-msearch';
+    panel.addEventListener('click', onSearchClick);
+    panel.addEventListener('change', onSearchChange);
+  }
+  if (card.nextElementSibling !== panel) card.after(panel);
+  panel.classList.toggle('closed', !msOpen);
+
+  const champ = msChamp();
+  const f = msFilters;
+  const games = msApply(msGames, f);
+  const head = `<div class="ms-head" data-toggle="1"><span class="ms-title">Match Search</span>
+    <span class="ms-sub">${msLoading ? 'Loading games…' : `${games.length} of ${msGames.length} recent high-elo ${lobbyEsc(msName.champ(champ))} games`}</span>
+    <svg class="ms-chev" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 4 4 4-4"/></svg></div>`;
+  if (!msOpen) { panel.innerHTML = head; return; }
+  if (!msLookups) { panel.innerHTML = head + '<div class="ms-body"><div class="ms-empty">Loading games…</div></div>'; return; }
+
+  // Options come from the games that match every other filter, with counts.
+  const opt = (k, keyFn, nameFn, anyLabel) => {
+    const list = msCount(msApply(msGames, f, k), keyFn);
+    const cur = f[k];
+    if (cur && !list.some((e) => String(e.k) === String(cur))) list.unshift({ k: cur, n: 0, w: 0 });
+    return [['', anyLabel], ...list.map((e) => [e.k, `${nameFn(e.k)} (${e.n})`])];
+  };
+  const filters = [
+    msSelect('enemy', 'Lane opponent', opt('enemy', (g) => g.enemy, msName.champ, 'Any'), f.enemy),
+    msSelect('lane', 'Laning @ 15 min', [['', 'Any'], ['ahead', `Ahead by ${f.laneGold / 1000}k+`], ['even', `Even (±${f.laneGold / 1000}k)`], ['behind', `Behind by ${f.laneGold / 1000}k+`]], f.lane),
+    msSelect('laneGold', 'Gold lead', [[500, '0.5k'], [1000, '1k'], [2000, '2k'], [3000, '3k']], f.laneGold),
+    msSelect('keystone', 'Keystone', opt('keystone', (g) => String(g.keystone), msName.keystone, 'Any'), f.keystone),
+    msSelect('sub', 'Secondary tree', opt('sub', (g) => String(g.sub), msName.sub, 'Any'), f.sub),
+    msSelect('spell', 'Summoner spell', opt('spell', (g) => g.spells.map(String), msName.spell, 'Any'), f.spell),
+    msSelect('item', 'Item bought', opt('item', (g) => [...new Set([...g.items, ...g.ordered])].filter(msIsCore).map(String), msName.item, 'Any'), f.item),
+    msSelect('len', 'Game length', [['', 'Any'], ['short', 'Short < 20'], ['med', 'Med 20–30'], ['long', 'Long 30+']], f.len),
+    msSelect('tier', 'Rank', opt('tier', (g) => g.tier, (x) => x, 'Any'), f.tier),
+    msSelect('region', 'Region', opt('region', (g) => g.region, (x) => x, 'Any'), f.region),
+    msSelect('result', 'Result', [['', 'Any'], ['win', 'Wins'], ['loss', 'Losses']], f.result),
+  ].join('');
+
+  let body;
+  if (!games.length) {
+    body = '<div class="ms-empty">No games match these filters. Loosen one of them.</div>';
+  } else {
+    const n = games.length, w = games.filter((g) => g.win).length;
+    const K = games.reduce((s, g) => s + g.k, 0), D = games.reduce((s, g) => s + g.d, 0), A = games.reduce((s, g) => s + g.a, 0);
+    const gdList = games.filter((g) => g.gd15 != null);
+    const gd = gdList.length ? Math.round(gdList.reduce((s, g) => s + g.gd15, 0) / gdList.length) : null;
+    const wr = Math.round((w / n) * 100);
+    const runes = msCount(games, (g) => `${g.keystone}|${g.sub}`);
+    const spells = msCount(games, (g) => g.spells.join('|'));
+    const core = msCount(games, (g) => { const c = g.ordered.filter(msIsCore).slice(0, 3); return c.length >= 2 ? c.join('|') : null; });
+    const items = msCount(games, (g) => [...new Set([...g.items, ...g.ordered])].filter(msIsCore));
+    const vs = msCount(games, (g) => g.enemy);
+    const img = (src, cls = '') => (src ? `<img class="${cls}" src="${src}" alt="">` : '');
+    body = `<div class="ms-sum">
+        <div><span class="ms-big ${msWrCls(wr, n)}">${wr}%</span> <span class="ms-k">win rate · ${n} games</span></div>
+        <div><span class="ms-big">${((K + A) / Math.max(1, D)).toFixed(2)}</span> <span class="ms-k">KDA (${(K / n).toFixed(1)} / ${(D / n).toFixed(1)} / ${(A / n).toFixed(1)})</span></div>
+        ${gd != null ? `<div><span class="ms-big ${gd >= 0 ? 'wr-hi' : 'wr-lo'}">${gd >= 0 ? '+' : ''}${gd}</span> <span class="ms-k">gold @15</span></div>` : ''}
+      </div>
+      <div class="ms-grid">
+        <div class="ms-box core"><h5>Core build</h5>${msOptRows(core, (k) => k.split('|').map((id, i) => (i ? '<span class="arr">›</span>' : '') + img(msItemIcon(id))).join(''), (k) => k.split('|').map(msName.item).join(' › '), 4)}</div>
+        <div class="ms-box"><h5>Runes</h5>${msOptRows(runes, (k) => { const [ks, sub] = k.split('|'); return img(msRuneIcon(ks, 'keystone'), 'round') + img(msRuneIcon(sub, 'subStyle'), 'round'); }, (k) => { const [ks, sub] = k.split('|'); return `${msName.keystone(ks)} + ${msName.sub(sub)}`; }, 4)}</div>
+        <div class="ms-box"><h5>Summoner spells</h5>${msOptRows(spells, (k) => k.split('|').map((id) => img(msSpellIcon(id))).join(''), (k) => k.split('|').map(msName.spell).join(' + '), 4)}</div>
+        <div class="ms-box"><h5>Items</h5>${msOptRows(items, (k) => img(msItemIcon(k)), msName.item, 6)}</div>
+        ${f.enemy ? '' : `<div class="ms-box"><h5>Lane opponents</h5>${msOptRows(vs, (k) => img(msChampIcon(k)), msName.champ, 6)}</div>`}
+      </div>
+      <div class="ms-games">${games.slice(0, 12).map((g) => `<div class="ms-game${g.win ? ' win' : ''}">
+          <span class="res">${g.win ? 'Win' : 'Loss'}<div class="ms-k">${Math.round(g.dur / 60)}m</div></span>
+          ${g.enemy ? `<img src="${msChampIcon(g.enemy)}" alt="" title="vs ${lobbyEsc(msName.champ(g.enemy))}" style="width:30px;height:30px;border-radius:6px">` : '<span></span>'}
+          <span class="who">${lobbyEsc(g.player)}<div class="g">${lobbyEsc(g.tier)} · ${lobbyEsc(g.region)} · ${g.k}/${g.d}/${g.a}${g.gd15 != null ? ` · ${g.gd15 >= 0 ? '+' : ''}${g.gd15}g @15` : ''}</div></span>
+          <span class="ms-ics">${img(msRuneIcon(g.keystone, 'keystone'), 'round')}${g.spells.map((s) => img(msSpellIcon(s))).join('')}</span>
+          <span class="ms-ics">${g.items.filter(msIsCore).slice(0, 5).map((id) => img(msItemIcon(id))).join('')}</span>
+        </div>`).join('')}</div>`;
+  }
+  panel.innerHTML = `${head}<div class="ms-body"><div class="ms-filters">${filters}</div>
+    <div class="ms-row"><button class="ms-btn" data-reset="1">Clear filters</button><span class="ms-k">Filters work on the recent games onetricks shows for this champion; only the lane opponent is known per game, not full team comps.</span></div>
+    ${body}</div>`;
+}
+
+function onSearchClick(e) {
+  if (e.target.closest('[data-toggle]')) {
+    msOpen = !msOpen;
+    try { localStorage.setItem('otp.msOpen', msOpen ? '1' : '0'); } catch {}
+    renderSearchPanel();
+    if (msOpen) msLoad();
+    return;
+  }
+  if (e.target.closest('[data-reset]')) {
+    const enemyBefore = msFilters.enemy;
+    msFilters = { enemy: '', lane: '', laneGold: msFilters.laneGold, keystone: '', sub: '', spell: '', item: '', len: '', tier: '', region: '', result: '' };
+    if (enemyBefore) msLoad(); else renderSearchPanel();
+  }
+}
+function onSearchChange(e) {
+  const sel = e.target.closest('select[data-f]');
+  if (!sel) return;
+  const k = sel.dataset.f;
+  msFilters[k] = k === 'laneGold' ? Number(sel.value) : sel.value;
+  if (k === 'enemy') msLoad(); else renderSearchPanel();
+}
+// Opponent from the URL (?matchup=, e.g. set by the lobby panel) presets the filter.
+function msSyncFromUrl() {
+  const p = new URLSearchParams(location.search);
+  const mu = p.get('matchup') || '';
+  if (mu && mu !== msFilters.enemy) msFilters.enemy = mu;
+}
+let msChampSeen = '';
+function mountSearchPanel() {
+  if (!location.pathname.includes('/champions/builds/')) { document.getElementById('otp-msearch')?.remove(); return; }
+  const c = msChamp() || '';
+  if (c !== msChampSeen) {
+    msChampSeen = c;
+    msFilters = { enemy: '', lane: '', laneGold: msFilters.laneGold, keystone: '', sub: '', spell: '', item: '', len: '', tier: '', region: '', result: '' };
+    msGames = []; msLookups = null; msLoadedKey = '';
+  }
+  msSyncFromUrl();
+  renderSearchPanel();
+  if (msOpen) msLoad();
+}
 
 // ---- Lifecycle & Observers ----
 // contextBridge must be called synchronously at top-level
@@ -1344,7 +1671,8 @@ window.addEventListener('DOMContentLoaded', () => {
       (!document.getElementById('otp-tiernav') || !document.getElementById('otp-sumnav'));
     // The site re-renders its header (React), which drops our ids and the Summoner link.
     const needsLobby = isBuild && !!lobbyState && !document.getElementById("otp-lobby");
-    if (needsHeader || needsFloat || needsTier || needsLobby) requestMountUI(80);
+    const needsSearch = isBuild && !document.getElementById("otp-msearch");
+    if (needsHeader || needsFloat || needsTier || needsLobby || needsSearch) requestMountUI(80);
 
     // Also remove Get Pro button if it reappears
     const getProBtn = document.querySelector('a.get-pro-btn, .get-pro-btn');
