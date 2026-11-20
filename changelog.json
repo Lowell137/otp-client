@@ -1,5 +1,35 @@
 [
   {
+    "version": "0.1.18",
+    "date": "2026-11-20",
+    "items": [
+      [
+        "Summoner, always fresh",
+        "Shows deeplol's real update time and refreshes data older than 5 minutes by itself."
+      ],
+      [
+        "Ranks and season stats",
+        "Solo and Flex ranks with W/L and peak, a 30-day LP chart and your season champions."
+      ],
+      [
+        "Match details",
+        "Each match opens Scoreboard, Build (purchase timeline, skill order, runes) and Win chance tabs."
+      ],
+      [
+        "Search from the header",
+        "Summoner search with region picker in the header; champion icons open their onetricks build."
+      ],
+      [
+        "Start screen",
+        "Your League account and the best one-tricks of your three most played champions."
+      ],
+      [
+        "onetricks look",
+        "Plain onetricks background when no wallpaper is saved, and the same header shadow."
+      ]
+    ]
+  },
+  {
     "version": "0.1.17",
     "date": "2026-11-20",
     "items": [
