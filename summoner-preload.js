@@ -808,7 +808,7 @@ function toggleMatchExpand(mi) {
   const maxDmg = Math.max(1, ...m.teams.map((t) => t.dmg || 0));
   const cspm = (cs) => (m.dur && cs != null) ? ` (${(cs / (m.dur / 60)).toFixed(1)}/m)` : '';
 
-  box.innerHTML = order.map((side) => {
+  const board = order.map((side) => {
     const ts = m.teams.filter((t) => t.side === side);
     if (!ts.length) return '';
     const won = ts[0].win;
@@ -888,10 +888,71 @@ function toggleMatchExpand(mi) {
       }).join('') + `</div>
     </div>`;
   }).join('');
+  box.innerHTML = matchTabsHtml(m, board);
+  wireMatchTabs(box);
   box.style.display = 'block';
   box.querySelectorAll('.otp-plink').forEach((el) => {
     el.onclick = (e) => { e.stopPropagation(); openPlayerProfile(el.dataset.name, el.dataset.tag); };
   });
+}
+
+// ---- Match detail tabs: Scoreboard / Build / Win chance ----
+const SKILL_KEYS = ['', 'Q', 'W', 'E', 'R'];
+function matchTabsHtml(m, board) {
+  const b = m.build || {};
+  const items = (b.items || []).map((g) => `<div class="otp-bt-step"><div class="otp-bt-ics">${g.items.map((it) => `<img src="${it.icon}" alt="" title="${it.id}">`).join('')}</div><span>${g.min}m</span></div>`).join('<span class="otp-bt-arr">›</span>');
+  const sk = b.skills || [];
+  const order = (() => { // max order: first basic skill to reach 5 points, then the next
+    const cnt = { 1: 0, 2: 0, 3: 0 }; const done = [];
+    for (const s of sk) { if (s >= 1 && s <= 3) { cnt[s]++; if (cnt[s] === 5 && !done.includes(s)) done.push(s); } }
+    for (const s of [1, 2, 3]) if (!done.includes(s)) done.push(s);
+    return done;
+  })();
+  const grid = [1, 2, 3, 4].map((k) => `<div class="otp-sk-row"><span class="otp-sk-key">${SKILL_KEYS[k]}</span>${Array.from({ length: 18 }, (_, i) => `<span class="otp-sk-cell${sk[i] === k ? ' on k' + k : ''}">${sk[i] === k ? i + 1 : ''}</span>`).join('')}</div>`).join('');
+  const rn = b.runes || {};
+  const ric = (src, cls = '') => (src ? `<img class="${cls}" src="${src}" alt="">` : '');
+  const buildHtml = `
+    <div class="otp-bt-sec"><h5>Items</h5><div class="otp-bt-items">${items || '<span class="otp-serr">No purchase data</span>'}</div></div>
+    <div class="otp-bt-sec"><h5>Skill order <span class="otp-bt-max">${order.map((s) => SKILL_KEYS[s]).join(' › ')}</span></h5><div class="otp-sk-grid">${grid}</div></div>
+    <div class="otp-bt-sec"><h5>Runes</h5><div class="otp-bt-runes">
+      <div class="otp-rn-tree">${ric(rn.primaryStyle, 'style')}${(rn.primary || []).map((x, i) => ric(x, i ? '' : 'key')).join('')}</div>
+      <div class="otp-rn-tree">${ric(rn.subStyle, 'style')}${(rn.secondary || []).map((x) => ric(x)).join('')}</div>
+    </div></div>`;
+  return `<div class="otp-xtabs"><button class="on" data-x="board">Scoreboard</button><button data-x="build">Build</button><button data-x="wc">Win chance</button></div>
+    <div class="otp-xpane" data-x="board">${board}</div>
+    <div class="otp-xpane" data-x="build" hidden>${buildHtml}</div>
+    <div class="otp-xpane" data-x="wc" hidden>${winChanceSvg(m)}</div>`;
+}
+function wireMatchTabs(box) {
+  box.querySelectorAll('.otp-xtabs button').forEach((b) => {
+    b.onclick = (e) => {
+      e.stopPropagation();
+      box.querySelectorAll('.otp-xtabs button').forEach((x) => x.classList.toggle('on', x === b));
+      box.querySelectorAll('.otp-xpane').forEach((p) => { p.hidden = p.dataset.x !== b.dataset.x; });
+    };
+  });
+}
+// Your team's chance to win over the game (deeplol time_analysis).
+function winChanceSvg(m) {
+  const pts = m.winChance || [];
+  if (pts.length < 2) return '<div class="otp-serr">No timeline for this match</div>';
+  const W = 760, H = 220, L = 34, R = 10, T = 12, B = 26;
+  const tMax = Math.max(...pts.map((p) => p.t), 1);
+  const X = (t) => L + (t / tMax) * (W - L - R);
+  const Y = (v) => T + (1 - v / 100) * (H - T - B);
+  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.t).toFixed(1)},${Y(p.wr).toFixed(1)}`).join(' ');
+  const area = d + ` L${X(pts[pts.length - 1].t).toFixed(1)},${Y(50)} L${X(pts[0].t).toFixed(1)},${Y(50)} Z`;
+  const ticks = []; for (let t = 0; t <= tMax; t += 5) ticks.push(t);
+  const last = pts[pts.length - 1].wr;
+  const col = m.win ? '#4f9be8' : '#e0605a';
+  return `<div class="otp-wc"><div class="otp-wc-head"><span>Your team's chance to win</span><b style="color:${m.win ? '#4f9be8' : '#e0605a'}">${m.win ? 'Win' : 'Loss'}</b></div>
+    <svg viewBox="0 0 ${W} ${H}">
+      ${[0, 25, 50, 75, 100].map((v) => `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v === 50 ? '#656e73' : '#2c2f31'}" stroke-dasharray="${v === 50 ? '' : '3 4'}"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${v}%</text>`).join('')}
+      ${ticks.map((t) => `<text x="${X(t)}" y="${H - 8}" text-anchor="middle">${t}m</text>`).join('')}
+      <path d="${area}" fill="${m.win ? 'rgba(79,155,232,.16)' : 'rgba(224,96,90,.14)'}"/>
+      <path d="${d}" fill="none" stroke="${col}" stroke-width="2.2" stroke-linejoin="round"/>
+      ${pts.map((p) => `<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.wr).toFixed(1)}" r="3" fill="${p.wr >= 50 ? '#4f9be8' : '#e0605a'}"><title>${p.t.toFixed(0)}m: ${p.wr.toFixed(1)}%</title></circle>`).join('')}
+    </svg></div>`;
 }
 
 async function openPlayerProfile(name, tag) {

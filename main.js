@@ -1451,7 +1451,49 @@ app.whenReady().then(async () => {
           spells: mySpells, runes: myRunes,
           mvp: !!p.mvp, ace: !!p.ace, position: p.position || '',
           teamDiff,
-          teams
+          teams,
+          // Match detail tabs (summoner page): this player's purchase timeline, skill
+          // order and full rune page, and the team's win chance over time.
+          build: {
+            items: (() => {
+              const out = [];
+              for (const e of p.item_seq_list || []) {
+                if (e.type !== 'ITEM_PURCHASED' || !e.item_id) continue;
+                const last = out[out.length - 1];
+                const it = { id: e.item_id, icon: `${base}/img/item/${e.item_id}.png` };
+                if (last && last.min === e.minute) last.items.push(it); else out.push({ min: e.minute, items: [it] });
+              }
+              return out;
+            })(),
+            skills: (p.skill_seq_list || []).filter((e) => e.type === 'NORMAL' || !e.type).map((e) => e.skill_id).slice(0, 18),
+            runes: await (async () => {
+              const rd = p.rune_detail_dict || {};
+              const icon = async (id) => (id ? await getRuneIcon(id) : null);
+              return {
+                primary: await Promise.all([rd.perk_0, rd.perk_1, rd.perk_2, rd.perk_3].map(icon)),
+                secondary: await Promise.all([rd.perk_4, rd.perk_5].map(icon)),
+                primaryStyle: await icon(rd.perk_primary_style),
+                subStyle: await icon(rd.perk_sub_style),
+              };
+            })(),
+          },
+          winChance: (() => {
+            // time_analysis win_rate: blue side's lead in percentage points over 50.
+            const ev = det?.time_analysis?.concat_events_dict || {};
+            // Each minute holds numbered kill events plus other keys (tower_plate,
+            // building); every entry that carries a win_rate is a point on the curve.
+            const pts = [];
+            for (const minute of Object.keys(ev)) {
+              for (const e of Object.values(ev[minute] || {})) {
+                if (!e || typeof e.win_rate !== 'number') continue;
+                const blue = Math.max(0, Math.min(100, 50 + e.win_rate));
+                pts.push({ t: typeof e.time === 'number' ? e.time : Number(minute), wr: p.side === 'BLUE' ? blue : 100 - blue });
+              }
+            }
+            pts.sort((a, b) => a.t - b.t);
+            if (pts.length) pts.unshift({ t: 0, wr: 50 });
+            return pts;
+          })(),
         };
         dlMatchCache.set(matchId, { ts: Date.now(), m, puu });
         return { m };
