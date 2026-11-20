@@ -384,7 +384,7 @@ async function parseBuild() {
 }
 
 // ---- Settings Management ----
-const DEF_SETTINGS = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, overlay: false, flashSlot: 'D', apiKey: '', region: 'tr1' };
+const DEF_SETTINGS = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, autoMatchup: true, overlay: false, flashSlot: 'D', apiKey: '', region: 'tr1' };
 let settings = { ...DEF_SETTINGS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('otp.settings') || '{}')); } catch {}
 function saveSettings() {
@@ -719,6 +719,10 @@ function buildSettingsPopover() {
         <span>Auto Import (Hover / Pick)</span>
         <span class="otp-sw"></span>
       </div>
+      <div class="otp-switch-row" data-k="autoMatchup">
+        <span>Auto Matchup (Lane Opponent)</span>
+        <span class="otp-sw"></span>
+      </div>
       <div class="otp-switch-row" data-k="autoAccept">
         <span>Auto Accept Match</span>
         <span class="otp-sw"></span>
@@ -877,6 +881,8 @@ function mountUI() {
   checkPendingAutoImport();
   renderLobbyPanel();
   mountSearchPanel();
+  if (otpPro === null) checkPro(); else applyPro();
+  maybeAutoMatchup();
 }
 
 // ---- Instant Auto-Import on any rune / set / filter selection ----
@@ -955,6 +961,7 @@ ipcRenderer.on('otp:auto-champ', async (_e, info) => {
 // ---- Tier List: hide PRO badges, themed Tier button + overlay, remove ad slots ----
 const TIER_CSS = `
 .pro-badge{display:none !important}
+html.otp-nopro [class*="AdvancedSearch_container"],html.otp-nopro .otp-pro-only{display:none !important}
 a.pro-btn,button.pro-btn,a.get-pro-btn{display:none !important}
 .header-menu-btn, .home-header-menu-btn{display:none !important}
 a[href*="discord"], .sidePanel{display:none !important}
@@ -1292,7 +1299,62 @@ function onLobbyClick(e) {
     lobbyGo(lobbyBuildUrl(p));
   }
 }
-ipcRenderer.on('otp:lobby-state', (_e, s) => { lobbyState = s; renderLobbyPanel(); });
+ipcRenderer.on('otp:lobby-state', (_e, s) => { lobbyState = s; renderLobbyPanel(); maybeAutoMatchup(); });
+
+// In game, open my champion's build vs my lane opponent once per game (setting
+// "Auto Matchup"). Only on my own champion's page; "All matchups" afterwards
+// sticks because the same game/opponent is not applied twice.
+function maybeAutoMatchup() {
+  const st = lobbyState;
+  if (!settings.autoMatchup || !st || st.phase !== 'InGame') return;
+  const champ = lobbyChampOfPage();
+  if (!champ || !st.me?.champ || champ.toLowerCase() !== st.me.champ.toLowerCase()) return;
+  const role = st.me.role;
+  if (!role) return;
+  const opp = (st.enemies || []).find((e) => e.role === role && e.champ);
+  if (!opp) return;
+  const key = `${st.me.champ}|${role}|${opp.champ}`;
+  try { if (sessionStorage.getItem('otp.autoMu') === key) return; sessionStorage.setItem('otp.autoMu', key); } catch {}
+  if ((new URLSearchParams(location.search).get('matchup') || '').toLowerCase() === opp.champ.toLowerCase()) return;
+  lobbyGo(lobbyBuildUrl({ matchup: opp.champ, role }));
+}
+
+// ---- onetricks Pro UI: hidden unless the signed-in account has Pro ----
+// Advanced Search and its "Search BETA" toggle open a Get Pro wall for everyone
+// else. /api/user/display-data is 401 when signed out.
+let otpPro = null;
+try { document.documentElement.classList.add('otp-nopro'); } catch {}
+function applyPro() {
+  document.documentElement.classList.toggle('otp-nopro', otpPro !== true);
+  if (otpPro === true) return;
+  siteAdvancedSearch()?.classList.add('otp-pro-only');
+  // "Onetricks Desktop App ... Get Pro" promo card on build pages.
+  for (const el of document.querySelectorAll('aside')) {
+    if (/Get Pro/i.test(el.textContent) && el.getBoundingClientRect().height < 260) el.classList.add('otp-pro-only');
+  }
+  document.querySelectorAll('button').forEach((b) => {
+    if (/^Search\s*BETA$/i.test(b.textContent.trim().replace(/\s+/g, ' '))) b.classList.add('otp-pro-only');
+  });
+}
+async function checkPro() {
+  try {
+    const c = JSON.parse(sessionStorage.getItem('otp.pro') || 'null');
+    if (c && Date.now() - c.ts < 10 * 60 * 1000) { otpPro = c.v; applyPro(); return; }
+  } catch {}
+  let v = false;
+  try {
+    const r = await fetch('/api/user/display-data', { credentials: 'include' });
+    if (r.ok) {
+      const j = await r.json();
+      const s = JSON.stringify(j);
+      v = /"(isPro|pro|premium|isPremium|subscribed|hasPro)":true/i.test(s)
+        || /"(plan|tier|role|subscription[A-Za-z]*)":"[^"]*(pro|premium)/i.test(s);
+    }
+  } catch {}
+  otpPro = v;
+  try { sessionStorage.setItem('otp.pro', JSON.stringify({ ts: Date.now(), v })); } catch {}
+  applyPro();
+}
 ipcRenderer.invoke('otp:lobby-get').then((s) => { if (s) { lobbyState = s; renderLobbyPanel(); } }).catch(() => {});
 
 // ---- Match search (build pages): our own filter over the games the site shows ----
@@ -1313,7 +1375,7 @@ let msFilters = { enemy: '', lane: '', laneGold: 1000, keystone: '', sub: '', sp
 let msOpen = (() => { try { return localStorage.getItem('otp.msOpen') !== '0'; } catch { return true; } })();
 
 const MS_CSS = `
-#otp-msearch{background:var(--fg,#212324);border:1px solid var(--border-light,#2c2f31);border-radius:10px;margin:0 0 16px;color:var(--text,#e8e6e3);font-size:13px;box-sizing:border-box}
+#otp-msearch{background:var(--fg,#212324);border:1px solid var(--border-light,#2c2f31);border-radius:10px;margin:10px 0 0;color:var(--text,#e8e6e3);font-size:13px;box-sizing:border-box}
 #otp-msearch .ms-head{display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none}
 #otp-msearch .ms-title{font-weight:700;font-size:15px}
 #otp-msearch .ms-sub{color:var(--lightText,#c2baaf);font-size:12px}
@@ -1487,6 +1549,17 @@ function msOptRows(list, icons, name, max = 5) {
   }).join('');
 }
 
+// The site filter card (Region / role / vs / VODs + the Pro Advanced Search form).
+// Found by content: the site's ad-recovery script swaps real class names for random
+// ones (only the page's own world sees the original names), so class selectors fail
+// in this preload world.
+function siteFilterCard() {
+  return [...document.querySelectorAll('.cardBorder')].find((c) => c.id !== 'otp-msearch' && /Region/.test(c.textContent) && /VODs/.test(c.textContent)) || null;
+}
+function siteAdvancedSearch(card) {
+  card = card || siteFilterCard();
+  return card ? [...card.children].find((k) => /Advanced Search/.test(k.textContent)) || null : null;
+}
 function renderSearchPanel() {
   const isBuild = location.pathname.includes('/champions/builds/');
   let panel = document.getElementById('otp-msearch');
@@ -1496,13 +1569,17 @@ function renderSearchPanel() {
     s.id = 'otp-msearch-css'; s.textContent = MS_CSS;
     document.head.appendChild(s);
   }
-  // Below the champion header card, above the site's build section.
-  const h1 = document.querySelector('h1');
-  if (!h1) return;
-  let card = h1;
-  while (card.parentElement && card.parentElement !== document.body) {
-    if (parseFloat(getComputedStyle(card).borderTopLeftRadius) >= 6 && card.getBoundingClientRect().width > 500) break;
-    card = card.parentElement;
+  // Right under the site's filter card (Region / role / vs / VODs), where the Pro
+  // Advanced Search form sits; falls back to under the champion header card.
+  let card = siteFilterCard();
+  if (!card) {
+    const h1 = document.querySelector('h1');
+    if (!h1) return;
+    card = h1;
+    while (card.parentElement && card.parentElement !== document.body) {
+      if (parseFloat(getComputedStyle(card).borderTopLeftRadius) >= 6 && card.getBoundingClientRect().width > 500) break;
+      card = card.parentElement;
+    }
   }
   if (!panel) {
     panel = document.createElement('div');
@@ -1631,9 +1708,12 @@ contextBridge.exposeInMainWorld('otp', { parseBuild, doImport });
 let _lastPath = location.pathname;
 let _mountTimeout = null;
 
+// Coalesce, don't debounce: the site mutates the DOM non-stop (timers, ads), so
+// resetting the timer on every mutation could postpone the mount forever.
 function requestMountUI(delay = 100) {
-  clearTimeout(_mountTimeout);
+  if (_mountTimeout) return;
   _mountTimeout = setTimeout(() => {
+    _mountTimeout = null;
     mountUI();
   }, delay);
 }
@@ -1673,7 +1753,10 @@ window.addEventListener('DOMContentLoaded', () => {
       (!document.getElementById('otp-tiernav') || !document.getElementById('otp-sumnav'));
     // The site re-renders its header (React), which drops our ids and the Summoner link.
     const needsLobby = isBuild && !!lobbyState && !document.getElementById("otp-lobby");
-    const needsSearch = isBuild && !document.getElementById("otp-msearch");
+    const msEl = document.getElementById("otp-msearch");
+    const msCard = isBuild && siteFilterCard();
+    const needsSearch = isBuild && (!msEl || (msCard && msCard.nextElementSibling !== msEl));
+    if (otpPro !== true && !window._otpProRaf) window._otpProRaf = requestAnimationFrame(() => { window._otpProRaf = 0; applyPro(); });
     if (needsHeader || needsFloat || needsTier || needsLobby || needsSearch) requestMountUI(80);
 
     // Also remove Get Pro button if it reappears

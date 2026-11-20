@@ -118,9 +118,12 @@ function startLcuLoops() {
       const me = (s.myTeam || []).find((p) => p.cellId === s.localPlayerCellId);
       const champId = me?.championId || me?.championPickIntent || 0;
       if (!champId) return;
+      // Assigned lane (draft/ranked); onetricks role values: top, jungle, mid, bot, supp.
+      const role = ({ top: 'top', jungle: 'jungle', middle: 'mid', bottom: 'bot', utility: 'supp' })[String(me?.assignedPosition || '').toLowerCase()] || '';
+      const pickKey = champId + '|' + role;
 
-      if (champId !== lastSentChamp) {
-        lastSentChamp = champId;
+      if (pickKey !== lastSentChamp) {
+        lastSentChamp = pickKey;
         const name = await champIdToName(champId);
         if (!name) return;
 
@@ -134,18 +137,20 @@ function startLcuLoops() {
             if (win && !win.isDestroyed()) {
               view.webContents.send('otp:auto-champ', name);
               if (flags.follow) {
-                const curUrl = view.webContents.getURL() || '';
+                const curUrl = (view.webContents.getURL() || '').toLowerCase();
                 const targetSlug = encodeURIComponent(name).toLowerCase();
-                if (!curUrl.toLowerCase().includes(`/champions/builds/${targetSlug}`)) {
+                const onChamp = curUrl.includes(`/champions/builds/${targetSlug}`);
+                const onRole = !role || new RegExp(`[?&]role=${role}(&|$)`).test(curUrl);
+                if (!onChamp || !onRole) {
                   view.webContents.session.setPreloads([path.join(__dirname, 'preload.js')]);
-                  await view.webContents.loadURL(`https://www.onetricks.gg/champions/builds/${encodeURIComponent(name)}`).catch(() => {});
+                  await view.webContents.loadURL(`https://www.onetricks.gg/champions/builds/${encodeURIComponent(name)}${role ? `?role=${role}` : ''}`).catch(() => {});
                 }
               }
             }
 
             // 2. Instant Auto-Import (Blitz/Mobalytics style)
-            if (flags.autoBuild && lastAutoBuildId !== champId) {
-              lastAutoBuildId = champId;
+            if (flags.autoBuild && lastAutoBuildId !== pickKey) {
+              lastAutoBuildId = pickKey;
               let build = null;
 
               // Try extracting build from open browser window first (bypasses Cloudflare / 429 rate limits)
