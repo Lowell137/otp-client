@@ -185,6 +185,7 @@
         <label>Name<input id="cName" placeholder="OpenRouter"></label>
         <label>Server address (OpenAI-compatible)<input id="cUrl" placeholder="https://openrouter.ai/api/v1"></label>
         <label>API key<input id="cKey" type="password" placeholder="sk-…"></label>
+        <div class="hint" id="keyState"></div>
         <label>Model<input id="cModel" list="cModels" placeholder="pick after “Load models”, or type one"></label>
         <datalist id="cModels"></datalist>
         <div class="hint">Works with OpenRouter, LM Studio (http://127.0.0.1:1234/v1), llama.cpp server, Unsloth Studio and other OpenAI-compatible servers. The key is stored encrypted on this PC.</div>
@@ -409,7 +410,10 @@
       persist();
     } else {
       body.className = 'err';
-      body.textContent = /401|403|auth/i.test(r.error || '') ? 'The server wants an API key (or the key is wrong). Click the name below the chat box.' : (r.error || 'Something went wrong.');
+      const er = r.error || '';
+      body.textContent = /401|403|auth/i.test(er) ? 'The server wants an API key (or the key is wrong). Click the name below the chat box.'
+        : /no model loaded/i.test(er) ? 'The server has no model loaded. In Unsloth Studio, load the model, or turn on Model auto-switch (Settings > API) so it loads the one picked here.'
+        : (er || 'Something went wrong.');
     }
     bx.appendChild(body);
     if (!steps.children.length) steps.remove();
@@ -477,7 +481,9 @@
     $('#cName').value = cfg.custom.name || '';
     $('#cUrl').value = cfg.custom.baseUrl || '';
     $('#cKey').value = '';
-    $('#cKey').placeholder = cfg.custom.hasKey ? 'saved (leave empty to keep it)' : 'sk-… (if the server needs one)';
+    $('#cKey').placeholder = cfg.custom.hasKey ? '•••••••••••••••• (saved)' : 'sk-… (if the server needs one)';
+    $('#keyState').innerHTML = cfg.custom.hasKey ? '<span style="color:#2fb96b">✓ Key saved (encrypted).</span> Type a new one to replace it, or <a href="#" id="keyRm" style="color:#6cb2ff">remove it</a>.' : '';
+    const rm = $('#keyRm'); if (rm) rm.onclick = async (e) => { e.preventDefault(); await window.otpAI.setConfig({ custom: { clearKey: true } }); openSettings(); };
     $('#cModel').value = cfg.custom.model || '';
     $('#cModels').innerHTML = (cfg.custom.models || []).map((m) => `<option value="${esc(m)}">`).join('');
     showProv(cfg.provider);

@@ -308,6 +308,7 @@ function startLcuLoops() {
 // to match the onetricks header so the app reads as one surface.
 const CAPTION = { color: '#141415', symbolColor: '#e8e6e3', height: 66 };
 let aiSidebar = null;
+let applyCaption = () => {};
 let view = null; // { webContents } alias kept so older call sites read the same
 function pageKind(url) {
   const u = String(url || '');
@@ -880,7 +881,7 @@ app.whenReady().then(async () => {
     ctx: { call: callIpc, getLobby: () => (lobbyWatch ? lobbyWatch.current() : null), liveGet },
   });
   // ...shown as a resizable panel on the right of every page.
-  aiSidebar = require('./ai/sidebar.js').createSidebar({ getWin: () => win, readState, writeState });
+  aiSidebar = require('./ai/sidebar.js').createSidebar({ getWin: () => win, readState, writeState, onToggle: () => applyCaption() });
   ipcMain.on('otp:ai-sidebar-toggle', () => aiSidebar.toggle());
   ipcMain.on('otp:ai-sidebar-close', () => aiSidebar.setOpen(false));
   ipcMain.on('otp:ai-resize', (_e, x) => aiSidebar.resizeTo(Number(x)));
@@ -938,16 +939,25 @@ app.whenReady().then(async () => {
 
   // Native caption buttons follow the page header: same color (home #141415,
   // inner pages #212324) and same height so they sit on the nav row.
+  // With the assistant panel open the buttons sit on the panel's top bar instead
+  // (#212324, 56 px), whatever page is on the left.
   let lastCaption = '';
+  let pageCaption = { color: CAPTION.color, height: CAPTION.height };
+  applyCaption = () => {
+    if (!win || win.isDestroyed()) return;
+    const { color, height } = aiSidebar && aiSidebar.isOpen() ? { color: '#212324', height: 56 } : pageCaption;
+    const key = color + height;
+    if (key === lastCaption) return;
+    lastCaption = key;
+    try { win.setTitleBarOverlay({ color, symbolColor: CAPTION.symbolColor, height }); } catch {}
+  };
   ipcMain.on('otp:caption', (_e, c) => {
     if (!win || win.isDestroyed() || !c) return;
     // #rrggbb, or #rrggbbaa (e.g. #00000000) so local pages can show the wallpaper behind the buttons.
     const color = /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(c.color) ? c.color : CAPTION.color;
     const height = Math.max(32, Math.min(72, Math.round(Number(c.height) || CAPTION.height)));
-    const key = color + height;
-    if (key === lastCaption) return;
-    lastCaption = key;
-    try { win.setTitleBarOverlay({ color, symbolColor: CAPTION.symbolColor, height }); } catch {}
+    pageCaption = { color, height };
+    applyCaption();
   });
   // Window moving for local pages (their header has no CSS drag region; see shell.css).
   // Uses the real cursor position in DIPs, so scaling and multi-monitor stay right.

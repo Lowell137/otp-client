@@ -10,7 +10,7 @@ const { WebContentsView } = require('electron');
 const MIN_W = 360;
 const DEF_W = 400;
 
-function createSidebar({ getWin, readState, writeState }) {
+function createSidebar({ getWin, readState, writeState, onToggle }) {
   let view = null;
   let open = false;
   let width = Number(readState().aiSidebarWidth) || DEF_W;
@@ -68,6 +68,7 @@ function createSidebar({ getWin, readState, writeState }) {
     layout();
     const st = readState(); st.aiSidebarOpen = open; writeState(st);
     try { win.webContents.send('otp:ai-sidebar', { open }); } catch {}
+    if (onToggle) onToggle(open);
     if (open) view.webContents.focus();
   }
 
