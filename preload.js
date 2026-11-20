@@ -1125,7 +1125,8 @@ const LOBBY_CSS = `
 #otp-lobby .lb-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 #otp-lobby .lb-title{font-weight:700;font-size:15px}
 #otp-lobby .lb-sub{color:var(--lightText,#c2baaf);font-size:12px}
-#otp-lobby .lb-live{width:8px;height:8px;border-radius:50%;background:#2fb96b;box-shadow:0 0 0 3px rgba(47,185,107,.18)}
+#otp-lobby .lb-live{width:8px;height:8px;border-radius:50%;background:#2fb96b;animation:otp-pulse 1.6s ease-in-out infinite}
+@keyframes otp-pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(47,185,107,.55)}50%{opacity:.45;box-shadow:0 0 0 5px rgba(47,185,107,0)}}
 #otp-lobby .lb-acts{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
 #otp-lobby .lb-btn{background:var(--fg-raised,#2c2e2f);border:1px solid var(--border-light,#2c2f31);color:var(--text,#e8e6e3);border-radius:8px;padding:6px 11px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 #otp-lobby .lb-btn:hover{background:var(--hover,#1b1d1e);border-color:var(--border,#656e73)}
@@ -1380,6 +1381,9 @@ const MS_CSS = `
 #otp-msearch.closed{display:none}
 #otp-ms-toggle{margin-left:auto;align-self:center;display:inline-flex;align-items:center;gap:7px;background:transparent;border:1px solid var(--border-light,#2c2f31);color:var(--text,#e8e6e3);border-radius:8px;padding:8px 13px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
 #otp-ms-toggle:hover{background:var(--hover,#1b1d1e);border-color:var(--border,#656e73)}
+#otp-ms-toggle{flex:none}
+#otp-ms-toggle.compact{padding:8px 10px}
+#otp-ms-toggle.compact span{display:none}
 #otp-ms-toggle.on{background:var(--blue,#1063b7);border-color:var(--blue,#1063b7);color:#fff}
 #otp-msearch .ms-head{display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none}
 #otp-msearch .ms-title{font-weight:700;font-size:15px}
@@ -1675,6 +1679,11 @@ function msMountToggle(card) {
   if (btn.parentElement !== row) row.appendChild(btn);
   btn.classList.toggle('on', msOpen);
   btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><span>Match Search</span>';
+  btn.title = 'Match Search';
+  // Stay on the filter row: when the row is full (e.g. a vs chip is set) drop to the icon.
+  btn.classList.remove('compact');
+  const first = row.firstElementChild;
+  if (first && first !== btn && btn.offsetTop > first.offsetTop + 8) btn.classList.add('compact');
 }
 function msToggle() {
   msOpen = !msOpen;
@@ -1724,19 +1733,20 @@ function mountSearchPanel() {
 // opponent in game).
 const SITENAV_CSS = `
 /* Top-left corner of the page, under the header, in the empty left gutter. */
-#otp-hdr-extra{background:transparent !important;border:0 !important;box-shadow:none !important;padding:0 !important;backdrop-filter:none !important;position:fixed;left:16px;top:calc(var(--otp-hh,66px) + 14px);z-index:900;display:flex;flex-direction:column;align-items:flex-start;gap:8px;-webkit-app-region:no-drag}
+#otp-hdr-extra{background:transparent !important;border:0 !important;box-shadow:none !important;padding:0 !important;backdrop-filter:none !important;position:fixed;left:10px;top:calc(var(--otp-hh,66px) + 14px);z-index:900;display:flex;flex-direction:column;align-items:flex-start;gap:8px;-webkit-app-region:no-drag}
 @media (max-width:1240px){#otp-hdr-extra{display:none}}
-#otp-sitenav{display:inline-flex;flex-direction:column;align-items:center;gap:2px;-webkit-app-region:no-drag}
-#otp-sitenav .nb{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;color:var(--text,#e8e6e3);cursor:pointer;padding:0;-webkit-app-region:no-drag}
+#otp-sitenav{display:inline-flex;flex-direction:row;align-items:center;gap:4px;-webkit-app-region:no-drag}
+#otp-sitenav .nb{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;color:var(--text,#e8e6e3);cursor:pointer;padding:0;-webkit-app-region:no-drag}
 #otp-sitenav .nb:hover:not(:disabled){background:var(--fg-raised,#2c2e2f)}
 #otp-sitenav .nb:disabled{opacity:.35;cursor:default}
 #otp-sitenav .nb svg{width:16px;height:16px;display:block}
-#otp-chip-wrap{display:inline-flex;align-items:center;margin-left:16px;margin-right:auto;align-self:center;-webkit-app-region:no-drag}
+#otp-chip-wrap{display:inline-flex;align-items:center;margin-left:8px;margin-right:auto;padding-right:14px;align-self:center;-webkit-app-region:no-drag}
 #otp-champ-chip{display:none;align-items:center;gap:7px;padding:4px 11px 4px 8px;height:32px;box-sizing:border-box;background:var(--fg-raised,#2c2e2f);border:1px solid var(--border-light,#2c2f31);border-radius:999px;color:var(--text,#e8e6e3);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;-webkit-app-region:no-drag}
 #otp-champ-chip.show{display:inline-flex}
 #otp-champ-chip:hover{background:var(--hover,#1b1d1e);border-color:var(--border,#656e73)}
 #otp-champ-chip img{width:22px;height:22px;border-radius:50%;display:block;flex:none}
-#otp-champ-chip .dot{width:7px;height:7px;border-radius:50%;background:#2fb96b;box-shadow:0 0 0 3px rgba(47,185,107,.18);flex:none}
+#otp-champ-chip .dot{width:7px;height:7px;border-radius:50%;background:#2fb96b;flex:none;animation:otp-pulse 1.6s ease-in-out infinite}
+@keyframes otp-pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(47,185,107,.55)}50%{opacity:.45;box-shadow:0 0 0 5px rgba(47,185,107,0)}}
 #otp-champ-chip .st{color:var(--lightText,#c2baaf);font-weight:500;font-size:12px}
 
 `;
@@ -1811,7 +1821,7 @@ function renderChampChip() {
   if (role) q.set('role', role);
   chip.dataset.url = `/champions/builds/${encodeURIComponent(me.champ)}${q.toString() ? '?' + q : ''}`;
   const nm = (k) => (msLookups?.champData?.[k]?.name) || k;
-  chip.innerHTML = `<span class="dot"></span><img src="${lobbyIcon(me.champ)}" alt=""><span class="nm">${lobbyEsc(nm(me.champ))}</span><span class="st">${st.phase === 'InGame' ? (opp ? 'vs ' + lobbyEsc(nm(opp.champ)) : 'In game') : 'Champ select'}</span>`;
+  chip.innerHTML = `<span class="dot"></span><img src="${lobbyIcon(me.champ)}" alt=""><span class="nm">${lobbyEsc(nm(me.champ))}</span>${opp ? `<span class="st">vs</span><img src="${lobbyIcon(opp.champ)}" alt=""><span class="nm">${lobbyEsc(nm(opp.champ))}</span>` : ''}`;
   chip.title = `Back to the ${nm(me.champ)} build`;
   chip.classList.add('show');
 }

@@ -117,7 +117,8 @@
     url = `/champions/builds/${me.champ}${q.toString() ? '?' + q : ''}`;
     const c = champName(me.champ);
     const icon = c.icon || '';
-    chip.innerHTML = `<span class="dot"></span>${icon ? `<img src="${icon}" alt="">` : ''}<span class="nm">${c.name}</span><span class="st">${st.phase === 'InGame' ? (opp ? 'vs ' + champName(opp.champ).name : 'In game') : 'Champ select'}</span>`;
+    const o = opp ? champName(opp.champ) : null;
+    chip.innerHTML = `<span class="dot"></span>${icon ? `<img src="${icon}" alt="">` : ''}<span class="nm">${c.name}</span>${o ? `<span class="st">vs</span>${o.icon ? `<img src="${o.icon}" alt="">` : ''}<span class="nm">${o.name}</span>` : ''}`;
     chip.title = `Back to the ${c.name} build`;
     chip.classList.add('show');
   });
