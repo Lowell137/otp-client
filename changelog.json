@@ -1,5 +1,31 @@
 [
   {
+    "version": "0.1.19",
+    "date": "2026-11-20",
+    "items": [
+      [
+        "ARAM Mayhem and Arena",
+        "New tabs on build pages: op.gg core build, summoner spells, skill order and the champion's augments by tier (S+ to C), with a rarity filter."
+      ],
+      [
+        "Lane guesses",
+        "In champion select, unknown lanes are guessed from each champion's play rates. Click a lane to change it; Build vs follows your pick."
+      ],
+      [
+        "Names in game",
+        "In ranked games the lobby panel now shows every player's name and rank."
+      ],
+      [
+        "Post-game result everywhere",
+        "Right after a game a small result card shows on any page; Details opens the full card."
+      ],
+      [
+        "Recently played with",
+        "Summoner shows the players you met most in recent games, with your record with and against them."
+      ]
+    ]
+  },
+  {
     "version": "0.1.18",
     "date": "2026-11-20",
     "items": [
