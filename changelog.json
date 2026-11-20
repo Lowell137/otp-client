@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.1.22",
+    "date": "2026-11-20",
+    "items": [
+      [
+        "AI Assistant",
+        "A side panel on every page (drag its edge to resize). Ask about builds, picks, players, patch changes or your last game; it looks everything up live. Works with Ollama or your own server; pick the model in the chat box."
+      ],
+      [
+        "In-game win chance",
+        "Your team's estimated chance to win, every 3 minutes, from a model trained on real games. Turn it on in settings."
+      ],
+      [
+        "In-game build & lane info",
+        "Next item to buy (and one against their team after your core build), which skill to level, CS and gold vs your lane opponent, enemy ranks. Turn it on in settings."
+      ],
+      [
+        "Separate overlay windows",
+        "Each overlay part is its own small window you can move and collapse."
+      ]
+    ]
+  },
+  {
     "version": "0.1.21",
     "date": "2026-11-20",
     "items": [
