@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.1.16",
+    "date": "2026-11-20",
+    "items": [
+      [
+        "Faster update restart",
+        "After you press Restart, the app closes right away so the update installs sooner. You will notice it from the next update on."
+      ]
+    ]
+  },
+  {
     "version": "0.1.15",
     "date": "2026-11-20",
     "items": [
