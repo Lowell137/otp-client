@@ -34,7 +34,7 @@
       "wallpapers-preload.js",
       "bg.js",
       "changelog.json",
-      "whatsnew.js",
+      "whatsnew.js","ai/","ai.html","ai-preload.js",
       "package.json",
       "assets/"
     ],
