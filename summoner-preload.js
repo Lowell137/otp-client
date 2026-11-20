@@ -382,6 +382,10 @@ function renderSummoner(res, showBack, isRenew) {
           <div class="otp-side-card-head"><span id="otp-champlabel">Champions</span></div>
           <div id="otp-champsbox"></div>
         </div>
+        <div class="otp-side-card">
+          <div class="otp-side-card-head"><span>Recently played with</span></div>
+          <div id="otp-withbox"></div>
+        </div>
       </div>
 
       <!-- Right Column: Matches with spells/runes, fate, and team expandable table -->
@@ -694,6 +698,7 @@ function paintMatchData() {
   }
   renderQtabs();
   if (lastDlRes.extra) paintExtra();
+  paintPlayedWith();
 }
 
 async function loadMatchChunks(res) {
@@ -1181,3 +1186,41 @@ async function renderHomeOtps() {
   lb.querySelectorAll('.otp-home-row').forEach((row) => { row.onclick = () => openFromHome(list[Number(row.dataset.i)]); });
 }
 window.addEventListener('DOMContentLoaded', () => { renderHome(); });
+
+// ---- Recently played with (left column): players met in the loaded matches ----
+// "With" = same team, "Against" = other team; games and your wins with/against
+// them. Only players seen twice or more. Click a name to open their profile.
+let pwTab = 'with';
+function paintPlayedWith() {
+  const box = document.querySelector('#otp-withbox');
+  if (!box || !lastDlRes) return;
+  const prof = lastDlRes.profile || {};
+  const meKey = `${String(prof.name || '').toLowerCase()}#${String(prof.tag || '').toLowerCase()}`;
+  const acc = new Map();
+  for (const m of lastDlRes._view || []) {
+    const teams = m.teams || [];
+    const me = teams.find((t) => `${String(t.name).toLowerCase()}#${String(t.tag || '').toLowerCase()}` === meKey);
+    if (!me) continue;
+    for (const t of teams) {
+      if (t === me || !t.name) continue;
+      const rel = t.side === me.side ? 'with' : 'against';
+      const k = `${rel}|${t.name}#${t.tag || ''}`;
+      const e = acc.get(k) || { rel, name: t.name, tag: t.tag || '', icon: t.icon, games: 0, wins: 0 };
+      e.games++;
+      if (me.win) e.wins++;
+      e.icon = t.icon;
+      acc.set(k, e);
+    }
+  }
+  const list = [...acc.values()].filter((e) => e.rel === pwTab && e.games >= 2).sort((a, b) => b.games - a.games || b.wins - a.wins).slice(0, 8);
+  const n = (lastDlRes._view || []).length;
+  box.innerHTML = `<div class="otp-pw-tabs"><button class="${pwTab === 'with' ? 'on' : ''}" data-pw="with">With</button><button class="${pwTab === 'against' ? 'on' : ''}" data-pw="against">Against</button></div>`
+    + (list.length
+      ? `<div class="otp-pw-head"><span>Summoner</span><span>Games</span><span>W-L</span><span>WR</span></div>` + list.map((e) => {
+        const wr = Math.round((e.wins / e.games) * 100);
+        return `<div class="otp-pw-row"><span class="who otp-plink" data-name="${esc(e.name)}" data-tag="${esc(e.tag)}" title="Open profile"><img src="${e.icon}" alt="">${esc(e.name)}<em>#${esc(e.tag)}</em></span><span>${e.games}</span><span>${e.wins}-${e.games - e.wins}</span><span class="${wr >= 55 ? 'up' : wr <= 45 ? 'down' : ''}">${wr}%</span></div>`;
+      }).join('')
+      : `<div class="otp-serr" style="padding:10px;">Nobody twice in the last ${n} games</div>`);
+  box.querySelectorAll('[data-pw]').forEach((b) => { b.onclick = () => { pwTab = b.dataset.pw; paintPlayedWith(); }; });
+  box.querySelectorAll('.otp-plink').forEach((el) => { el.onclick = (e) => { e.stopPropagation(); openPlayerProfile(el.dataset.name, el.dataset.tag); }; });
+}

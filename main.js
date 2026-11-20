@@ -1383,6 +1383,11 @@ app.whenReady().then(async () => {
       return [];
     }
   });
+  // op.gg ARAM Mayhem / Arena: build + augment stats for a champion (opgg.js).
+  ipcMain.handle('otp:opgg-mode', async (_e, q) => {
+    try { return await require('./opgg.js').modeData(q?.mode, q?.champ); }
+    catch (e) { return { error: String(e?.message || e) }; }
+  });
   // deeplol's "Update" button: refresh matches, ranks and champion stats.
   ipcMain.handle('otp:deeplol-renew', async (_e, q) => {
     const platform = String(q?.platform || 'TR1').toUpperCase();

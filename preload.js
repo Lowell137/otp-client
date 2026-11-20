@@ -886,6 +886,7 @@ function mountUI() {
   renderLobbyPanel();
   renderPostGame();
   mountSearchPanel();
+  renderModes();
   if (otpPro === null) checkPro(); else applyPro();
   maybeAutoMatchup();
   injectSiteNav();
@@ -898,7 +899,7 @@ document.addEventListener('click', (e) => {
   if (!target) return;
 
   // Ignore clicks inside our own header bar, floating settings, or popover
-  if (target.closest('#otp-header-actions') || target.closest('#otp-float-settings') || target.closest('.otp-popover') || target.closest('#otp-lobby') || target.closest('#otp-msearch') || target.closest('#otp-postgame')) return;
+  if (target.closest('#otp-header-actions') || target.closest('#otp-float-settings') || target.closest('.otp-popover') || target.closest('#otp-lobby') || target.closest('#otp-msearch') || target.closest('#otp-postgame') || target.closest('#otp-modes') || target.closest('.otp-mode-tab')) return;
 
   if (!location.pathname.includes('/champions/builds/')) return;
 
@@ -2007,6 +2008,123 @@ async function renderPostGame() {
 ipcRenderer.on('otp:postgame', (_e, c) => { pgCard = c; renderPostGame(); });
 ipcRenderer.invoke('otp:postgame-get').then((c) => { if (c) { pgCard = c; renderPostGame(); } }).catch(() => {});
 
+// ---- ARAM Mayhem / Arena (build pages): op.gg build + augments for this champion ----
+// Two extra tabs next to the site's "ARAM" tab. The panel opens under the filter
+// row: core build, boots, and the champion's augments by tier (Mayhem: op.gg's
+// own tiers; Arena: ranked by win rate, shrunk by game count, see opgg.js).
+let modeOpen = '';
+let modeFilter = 'all';
+const modeCache = new Map();
+const MODE_TIER = ['S+', 'S', 'A', 'B', 'C', '–'];
+const MODE_TIER_COL = ['#ff4e50', '#ff8a3d', '#f5c518', '#2fb96b', '#4f9be8', '#656e73'];
+// op.gg rarity flags: 1 Silver, 4 Gold, 8 Prism.
+const RARITY = { 1: 'Silver', 4: 'Gold', 8: 'Prism' };
+const MODES_CSS = `
+.otp-mode-tab{cursor:pointer}
+.otp-mode-tab.on{color:#fff !important;border-bottom-color:var(--blue,#1063b7) !important}
+#otp-modes{background:var(--fg,#212324);border:1px solid var(--border-light,#2c2f31);border-radius:10px;margin:10px 0 0;padding:14px 16px;color:var(--text,#e8e6e3);font-size:13px;box-sizing:border-box}
+#otp-modes .md-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+#otp-modes .md-title{font-weight:700;font-size:16px}
+#otp-modes .md-src{color:var(--lightText,#c2baaf);font-size:12px}
+#otp-modes .md-x{margin-left:auto;background:transparent;border:0;color:var(--lightText,#c2baaf);font-size:18px;cursor:pointer;border-radius:6px;padding:2px 8px}
+#otp-modes .md-x:hover{background:var(--fg-raised,#2c2e2f);color:#fff}
+#otp-modes .md-sec{background:var(--bg,#181a1b);border:1px solid var(--border-light,#2c2f31);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+#otp-modes .md-sec h5{margin:0 0 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--lightText,#c2baaf);display:flex;align-items:center;gap:8px}
+#otp-modes .md-builds{display:flex;flex-wrap:wrap;gap:8px 22px;align-items:center}
+#otp-modes .md-row{display:flex;align-items:center;gap:3px}
+#otp-modes .md-row img{width:34px;height:34px;border-radius:7px;background:#111}
+#otp-modes .md-row .arr{color:#656e73;margin:0 2px}
+#otp-modes .md-rank{color:var(--lightText,#c2baaf);font-size:11px;font-weight:700;margin-right:6px}
+#otp-modes .md-filters{margin-left:auto;display:flex;gap:4px}
+#otp-modes .md-filters button{background:transparent;border:1px solid var(--border-light,#2c2f31);color:var(--lightText,#c2baaf);border-radius:999px;padding:2px 10px;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;text-transform:none;letter-spacing:0}
+#otp-modes .md-filters button.on{background:var(--blue,#1063b7);border-color:var(--blue,#1063b7);color:#fff}
+#otp-modes .md-tier{display:grid;grid-template-columns:44px 1fr;gap:10px;align-items:start;padding:8px 0}
+#otp-modes .md-tier+.md-tier{border-top:1px solid rgba(255,255,255,.05)}
+#otp-modes .md-tl{font-weight:900;font-size:18px;text-align:center;border-radius:8px;padding:6px 0;color:#111}
+#otp-modes .md-augs{display:flex;flex-wrap:wrap;gap:6px}
+#otp-modes .md-aug{display:flex;align-items:center;gap:7px;background:var(--fg,#212324);border:1px solid var(--border-light,#2c2f31);border-radius:8px;padding:4px 9px 4px 4px;max-width:250px}
+#otp-modes .md-aug img{width:28px;height:28px;border-radius:6px;flex:none}
+#otp-modes .md-aug .nm{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#otp-modes .md-aug .st{font-size:10.5px;color:var(--lightText,#c2baaf)}
+#otp-modes .md-aug.r1{border-left:3px solid #b8c4cc}
+#otp-modes .md-aug.r4{border-left:3px solid #e8b84b}
+#otp-modes .md-aug.r8{border-left:3px solid #c46bff}
+#otp-modes .md-empty{color:var(--lightText,#c2baaf);padding:6px 0}
+`;
+function modeTabRow() {
+  const aram = [...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'ARAM' && /\/champions\//.test(a.getAttribute('href') || ''));
+  return aram || null;
+}
+function injectModeTabs() {
+  if (!location.pathname.includes('/champions/builds/')) return;
+  const aram = modeTabRow();
+  if (!aram) return;
+  if (!document.getElementById('otp-modes-css')) {
+    const s = document.createElement('style');
+    s.id = 'otp-modes-css'; s.textContent = MODES_CSS;
+    document.head.appendChild(s);
+  }
+  let last = aram;
+  for (const [mode, label] of [['aram-mayhem', 'ARAM Mayhem'], ['arena', 'Arena']]) {
+    let a = document.querySelector(`.otp-mode-tab[data-mode="${mode}"]`);
+    if (!a) {
+      a = document.createElement('a');
+      a.href = 'javascript:void(0)';
+      a.dataset.mode = mode;
+      a.textContent = label;
+      a.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); modeOpen = modeOpen === mode ? '' : mode; renderModes(); });
+    }
+    a.className = (aram.className || '') + ' otp-mode-tab' + (modeOpen === mode ? ' on' : '');
+    if (last.nextElementSibling !== a) last.after(a);
+    last = a;
+  }
+}
+async function renderModes() {
+  injectModeTabs();
+  let panel = document.getElementById('otp-modes');
+  if (!modeOpen || !location.pathname.includes('/champions/builds/')) { panel?.remove(); return; }
+  const champ = lobbyChampOfPage();
+  const card = siteFilterCard() || document.querySelector('h1')?.closest('.cardBorder');
+  if (!card || !champ) return;
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'otp-modes';
+    panel.addEventListener('click', (e) => {
+      if (e.target.closest('.md-x')) { modeOpen = ''; renderModes(); return; }
+      const f = e.target.closest('[data-rf]');
+      if (f) { modeFilter = f.dataset.rf; renderModes(); }
+    });
+  }
+  if (card.nextElementSibling !== panel) card.after(panel);
+  const title = modeOpen === 'arena' ? 'Arena' : 'ARAM Mayhem';
+  const key = modeOpen + '|' + champ;
+  let d = modeCache.get(key);
+  if (!d) {
+    panel.innerHTML = `<div class="md-head"><span class="md-title">${lobbyEsc(champ)} · ${title}</span><span class="md-src">Loading from op.gg…</span><button class="md-x" title="Close">×</button></div>`;
+    try { d = await ipcRenderer.invoke('otp:opgg-mode', { mode: modeOpen, champ }); } catch (e) { d = { error: String(e) }; }
+    if (d && !d.error) modeCache.set(key, d);
+    if (modeOpen + '|' + lobbyChampOfPage() !== key) return;
+  }
+  if (!d || d.error) {
+    panel.innerHTML = `<div class="md-head"><span class="md-title">${lobbyEsc(champ)} · ${title}</span><button class="md-x" title="Close">×</button></div><div class="md-empty">Could not load op.gg data (${lobbyEsc(d && d.error || 'unknown')}).</div>`;
+    return;
+  }
+  const itemIcon = (id) => `https://opgg-static.akamaized.net/meta/images/lol/latest/item/${id}.png`;
+  const row = (ids, i) => `<div class="md-row"><span class="md-rank">${i + 1}</span>${ids.map((id, k) => (k ? '<span class="arr">›</span>' : '') + `<img src="${itemIcon(id)}" alt="">`).join('')}</div>`;
+  const b = d.build || {};
+  const buildHtml = (b.core || []).length
+    ? `<div class="md-sec"><h5>Core build</h5><div class="md-builds">${b.core.slice(0, 3).map(row).join('')}${(b.boots || []).length ? `<div class="md-row"><span class="md-rank">Boots</span><img src="${itemIcon(b.boots[0])}" alt=""></div>` : ''}${(b.starter || [])[0] ? `<div class="md-row"><span class="md-rank">Start</span>${b.starter[0].map((id) => `<img src="${itemIcon(id)}" alt="">`).join('')}</div>` : ''}</div></div>`
+    : '';
+  const augs = (d.augments || []).filter((a) => modeFilter === 'all' || String(a.rarity) === modeFilter);
+  const byTier = [0, 1, 2, 3, 4].map((t) => augs.filter((a) => a.tier === t));
+  const stat = (a) => (modeOpen === 'arena' ? `${a.wr.toFixed(1)}% WR · ${a.games} games` : `${a.pick.toFixed(1)}% picked`);
+  const augHtml = byTier.map((list, t) => (list.length ? `<div class="md-tier"><div class="md-tl" style="background:${MODE_TIER_COL[t]}">${MODE_TIER[t]}</div><div class="md-augs">${list.map((a) => `<div class="md-aug r${a.rarity}" title="${lobbyEsc(a.name)}: ${lobbyEsc(a.desc)}"><img src="${a.icon}" alt=""><div style="min-width:0"><div class="nm">${lobbyEsc(a.name)}</div><div class="st">${stat(a)}</div></div></div>`).join('')}</div></div>` : '')).join('');
+  const rarities = [['all', 'All'], ['1', 'Silver'], ['4', 'Gold'], ['8', 'Prism']];
+  panel.innerHTML = `<div class="md-head"><span class="md-title">${lobbyEsc(champ)} · ${title}</span><span class="md-src">op.gg · ${modeOpen === 'arena' ? 'tiers from win rate and games on this champion' : 'tiers for this champion'}</span><button class="md-x" title="Close">×</button></div>
+    ${buildHtml}
+    <div class="md-sec"><h5>Augments for ${lobbyEsc(champ)}<span class="md-filters">${rarities.map(([v, l]) => `<button data-rf="${v}" class="${modeFilter === v ? 'on' : ''}">${l}</button>`).join('')}</span></h5>${augHtml || '<div class="md-empty">No augment data.</div>'}</div>`;
+}
+
 // ---- Lifecycle & Observers ----
 // contextBridge must be called synchronously at top-level
 contextBridge.exposeInMainWorld('otp', { parseBuild, doImport });
@@ -2062,10 +2180,11 @@ window.addEventListener('DOMContentLoaded', () => {
     const msEl = document.getElementById("otp-msearch");
     const msCard = isBuild && siteFilterCard();
     const needsPg = isBuild && !!pgCard && !(lobbyState && (lobbyState.allies?.length || lobbyState.enemies?.length)) && !document.getElementById("otp-postgame");
+    const needsModes = isBuild && (!document.querySelector(".otp-mode-tab") && !!modeTabRow() || (!!modeOpen && !document.getElementById("otp-modes")));
     const needsNav = !!document.querySelector("header") && !document.getElementById("otp-sitenav");
     const needsSearch = isBuild && (!msEl || (msCard && (msCard.nextElementSibling !== msEl || !document.getElementById("otp-ms-toggle"))));
     if (otpPro !== true && !window._otpProRaf) window._otpProRaf = requestAnimationFrame(() => { window._otpProRaf = 0; applyPro(); });
-    if (needsHeader || needsFloat || needsTier || needsLobby || needsSearch || needsNav || needsPg) requestMountUI(80);
+    if (needsHeader || needsFloat || needsTier || needsLobby || needsSearch || needsNav || needsPg || needsModes) requestMountUI(80);
 
     // Also remove Get Pro button if it reappears
     const getProBtn = document.querySelector('a.get-pro-btn, .get-pro-btn');

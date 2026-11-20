@@ -21,6 +21,7 @@
       "lcu-creds.js",
       "lobby.js",
       "postgame.js",
+      "opgg.js",
       "tier-preload.js",
       "tierlist.html",
       "summoner-preload.js",
