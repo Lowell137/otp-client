@@ -812,7 +812,7 @@ function paintUpdate(s) {
     const msg = {
       idle: '', checking: 'Checking…', none: 'You have the latest version',
       downloading: `Downloading v${updInfo.version || ''} · ${updInfo.percent || 0}%`,
-      ready: `v${updInfo.version || ''} is ready to install`,
+      ready: `v${updInfo.version || ''} installs when you close the app`,
       error: 'Could not check: ' + (updInfo.message || 'unknown error'),
       dev: updInfo.message || 'Updates work in the installed app only',
     }[st] ?? '';
@@ -832,7 +832,7 @@ function paintUpdate(s) {
     const bar = gear.querySelector('.otp-upd-ring .bar');
     if (bar && st !== 'checking') bar.setAttribute('stroke-dashoffset', String(131.95 * (1 - pct / 100)));
     gear.querySelector('.otp-gear-pct').textContent = st === 'ready' ? '↻' : st === 'downloading' ? pct + '%' : '';
-    gear.title = st === 'ready' ? `Update v${updInfo.version || ''} ready: open settings to restart`
+    gear.title = st === 'ready' ? `Update v${updInfo.version || ''} installs when you close the app`
       : st === 'downloading' ? `Downloading update v${updInfo.version || ''}: ${pct}%`
       : st === 'checking' ? 'Checking for updates…' : 'OTP Settings';
   }

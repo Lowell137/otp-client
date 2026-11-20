@@ -136,7 +136,7 @@
     const pct = st === 'ready' ? 100 : st === 'downloading' ? (state.percent || 0) : 0;
     if (st !== 'checking') ring.querySelector('.bar').setAttribute('stroke-dashoffset', String(100.53 * (1 - pct / 100)));
     ring.querySelector('span').textContent = st === 'ready' ? '↻' : st === 'downloading' ? pct + '%' : '';
-    ring.title = st === 'ready' ? 'Update v' + (state.version || '') + ' ready: click to restart and install'
+    ring.title = st === 'ready' ? 'Update v' + (state.version || '') + ' installs when you close the app (click to restart now)'
       : st === 'downloading' ? 'Downloading update v' + (state.version || '') + ': ' + pct + '%' : 'Checking for updates…';
   });
 })();
