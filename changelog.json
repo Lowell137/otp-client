@@ -1,5 +1,19 @@
 [
   {
+    "version": "0.1.15",
+    "date": "2026-11-20",
+    "items": [
+      [
+        "Start with League",
+        "New setting: OTP Client starts hidden with Windows and opens when the League client starts. Closing the window keeps it in the tray (right-click the tray icon to quit)."
+      ],
+      [
+        "Tidier navigation",
+        "Back / forward / reload sit right under the header on build pages."
+      ]
+    ]
+  },
+  {
     "version": "0.1.14",
     "date": "2026-11-20",
     "items": [
