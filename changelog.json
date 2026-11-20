@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.1.13",
+    "date": "2026-11-20",
+    "items": [
+      [
+        "Silent updates",
+        "After you press Restart, the update installs without showing the installer and the app reopens on the new version."
+      ]
+    ]
+  },
+  {
     "version": "0.1.12",
     "date": "2026-11-20",
     "items": [
