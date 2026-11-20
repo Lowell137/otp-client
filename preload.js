@@ -1054,6 +1054,12 @@ function injectTierNav() {
         sb.innerHTML = `<div style="color:var(--text);display:inline-block;margin-right:${sp}px;">Summoner</div>`;
       }
       origTier.after(sb);
+      // Assistant (ai.html), same look as Summoner.
+      const ab = sb.cloneNode(true);
+      ab.id = 'otp-ainav';
+      (ab.firstElementChild || ab).textContent = 'Assistant';
+      ab.onclick = (e) => { e.preventDefault(); try { ipcRenderer.send('otp:go', 'ai'); } catch {} };
+      sb.after(ab);
     }
     return;
   }
@@ -1083,6 +1089,11 @@ function injectTierNav() {
 
   anchor.parentElement.appendChild(btn);
   anchor.parentElement.appendChild(sb);
+  const ab = sb.cloneNode(true);
+  ab.id = 'otp-ainav';
+  ab.textContent = 'Assistant';
+  ab.onclick = (e) => { e.preventDefault(); try { ipcRenderer.send('otp:go', 'ai'); } catch {} };
+  anchor.parentElement.appendChild(ab);
 }
 
 // The site's own "Tier List" is a PRO-gated popup trigger that React re-renders,

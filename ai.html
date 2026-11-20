@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assistant — OTP Client</title>
+<style>
+  :root {
+    --text: #e8e6e3; --mute: #8b8f92; --soft: #c9c3bc; --bg: #181a1b; --fg: #212324; --raised: #2a2d2f;
+    --line: #2c2f31; --line-hi: #656e73; --blue: #1063b7;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; color: var(--text); font-size: 13px; -webkit-font-smoothing: antialiased; background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    display: flex; flex-direction: column; border-left: 1px solid var(--line); overflow: hidden;
+  }
+  button, select, input, textarea { font: inherit; color: var(--text); }
+  ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 8px; }
+
+  /* Left edge: drag to resize the panel */
+  #grip { position: fixed; left: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize; z-index: 40; }
+  #grip:hover, #grip.on { background: rgba(16, 99, 183, .6); }
+
+  /* 56 px bar like the app header; the right part stays free for the window buttons */
+  #top { height: 56px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 146px 0 14px; background: var(--fg); border-bottom: 1px solid var(--line); user-select: none; }
+  #top h1 { font-size: 14px; margin: 0; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  #top .sp { flex: 1; min-width: 4px; }
+  .ib { width: 30px; height: 30px; flex: none; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--soft); cursor: pointer; padding: 0; }
+  .ib:hover { background: var(--raised); color: #fff; }
+  .ib.on { background: var(--raised); color: #fff; border-color: var(--line); }
+
+  #main { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+  #banner { display: none; margin: 10px 12px 0; background: var(--fg); border: 1px solid var(--line); border-left: 3px solid #d9a33a; border-radius: 8px; padding: 9px 12px; font-size: 12px; line-height: 1.5; }
+  #banner.on { display: block; }
+  #banner b { color: #f0c75e; }
+  #banner code { background: #2c2f31; border-radius: 4px; padding: 1px 5px; font-size: 11.5px; }
+
+  #log { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 94%; line-height: 1.55; font-size: 13.5px; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: var(--blue); color: #fff; padding: 8px 12px; border-radius: 12px 12px 3px 12px; white-space: pre-wrap; }
+  .msg.bot { align-self: flex-start; }
+  .msg.bot p { margin: 0 0 6px; } .msg.bot p:last-child { margin: 0; }
+  .msg.bot ul, .msg.bot ol { margin: 4px 0 6px; padding-left: 20px; }
+  .msg.bot code { background: #2c2f31; border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+  .msg.bot b { color: #fff; }
+  .err { color: #f0707a; }
+  .steps { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .step { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--soft); background: var(--raised); border: 1px solid var(--line); border-radius: 20px; padding: 3px 10px; }
+  .step .dot { width: 7px; height: 7px; border-radius: 50%; background: #d9a33a; animation: pulse 1s infinite; }
+  .step.ok .dot { background: #2fb96b; animation: none; } .step.bad .dot { background: #e0605a; animation: none; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .typing { display: inline-flex; gap: 4px; padding: 4px 0; } .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--mute); animation: pulse 1s infinite; }
+  .typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; }
+
+  #empty { margin: auto; text-align: center; color: var(--mute); max-width: 320px; padding: 0 6px; }
+  #empty h2 { color: var(--text); font-size: 15px; margin: 0 0 6px; }
+  #empty .chips { display: flex; flex-direction: column; gap: 8px; align-items: center; margin-top: 14px; }
+  #empty .chips button { background: var(--raised); border: 1px solid var(--line); border-radius: 18px; padding: 7px 12px; font-size: 12.5px; cursor: pointer; }
+  #empty .chips button:hover { border-color: var(--line-hi); }
+
+  /* Composer: text on top, model + settings + send below (like a chat app) */
+  #compose { flex: none; margin: 0 12px 12px; background: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 8px 6px; }
+  #compose:focus-within { border-color: var(--line-hi); }
+  #q { width: 100%; resize: none; border: 0; outline: 0; background: transparent; font-size: 13.5px; line-height: 1.45; max-height: 160px; padding: 2px 4px 6px; display: block; }
+  #crow { display: flex; align-items: center; gap: 4px; }
+  #model { flex: 1; min-width: 0; background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 4px 4px; font-size: 12px; color: var(--soft); cursor: pointer; outline: 0; }
+  #model:hover { background: var(--raised); }
+  #model option { background: var(--fg); color: var(--text); }
+  #send { flex: none; height: 30px; padding: 0 14px; background: var(--blue); border: 0; color: #fff; border-radius: 6px; font-weight: 600; font-size: 12.5px; cursor: pointer; }
+  #send:hover { filter: brightness(1.1); }
+  #send.stop { background: #3a3d40; }
+
+  /* History list (over the chat) */
+  #hist { display: none; position: absolute; inset: 0; background: var(--bg); z-index: 20; flex-direction: column; }
+  #hist.on { display: flex; }
+  #hist .hh { display: flex; align-items: center; gap: 8px; padding: 12px 12px 8px; }
+  #hist .hh b { font-size: 13px; flex: 1; }
+  #hlist { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+  .hi { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+  .hi:hover { background: var(--fg); }
+  .hi.cur { background: var(--fg); border-color: var(--line); }
+  .hi .t { flex: 1; min-width: 0; }
+  .hi .t div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+  .hi .t span { font-size: 11px; color: var(--mute); }
+  .hi .x { opacity: 0; }
+  .hi:hover .x { opacity: 1; }
+  #hlist .none { color: var(--mute); text-align: center; padding: 30px 10px; font-size: 12.5px; }
+
+  /* Settings */
+  #set { display: none; position: absolute; inset: 0; background: var(--bg); z-index: 30; overflow-y: auto; }
+  #set.on { display: block; }
+  #set .box { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  #set h3 { margin: 0; font-size: 14px; }
+  #set .tabs { display: flex; gap: 6px; }
+  #set .tabs button { flex: 1; }
+  .btn { background: var(--fg); border: 1px solid var(--line); border-radius: 6px; font-size: 12.5px; padding: 7px 12px; cursor: pointer; }
+  .btn:hover { border-color: var(--line-hi); }
+  .btn.pri, #set .tabs button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+  #set label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--soft); }
+  #set input { background: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; font-size: 12.5px; outline: 0; }
+  #set input:focus { border-color: var(--line-hi); }
+  #set .hint { font-size: 11.5px; color: var(--mute); line-height: 1.5; }
+  #set .row { display: flex; gap: 8px; justify-content: flex-end; }
+  .pane { display: none; flex-direction: column; gap: 10px; } .pane.on { display: flex; }
+</style>
+</head>
+<body>
+<div id="grip" title="Drag to resize"></div>
+<div id="top">
+  <h1 id="title">Assistant</h1>
+  <span class="sp"></span>
+  <button class="ib" id="histBtn" title="Chat history"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg></button>
+  <button class="ib" id="newBtn" title="New chat"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+  <button class="ib" id="close" title="Close panel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button>
+</div>
+
+<div id="main">
+  <div id="banner"></div>
+  <div id="log"></div>
+  <div id="compose">
+    <textarea id="q" rows="1" placeholder="Ask about players, items, your game…" spellcheck="false"></textarea>
+    <div id="crow">
+      <select id="model" title="Model"></select>
+      <button class="ib" id="gear" title="Model settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></button>
+      <button id="send">Send</button>
+    </div>
+  </div>
+
+  <div id="hist">
+    <div class="hh"><b>Chat history</b><button class="btn" id="histNew">New chat</button><button class="ib" id="histClose" title="Back"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+    <div id="hlist"></div>
+  </div>
+
+  <div id="set">
+    <div class="box">
+      <h3>Model settings</h3>
+      <div class="tabs"><button class="btn" data-prov="ollama">Ollama (local)</button><button class="btn" data-prov="custom">Custom server</button></div>
+      <div class="pane" data-pane="ollama">
+        <label>Ollama address<input id="oUrl" placeholder="http://127.0.0.1:11434"></label>
+        <div class="hint">Runs models on your own PC, free and private. Choose the model in the chat box.</div>
+      </div>
+      <div class="pane" data-pane="custom">
+        <label>Name<input id="cName" placeholder="OpenRouter"></label>
+        <label>Server address (OpenAI-compatible)<input id="cUrl" placeholder="https://openrouter.ai/api/v1"></label>
+        <label>API key<input id="cKey" type="password" placeholder="sk-…"></label>
+        <label>Model<input id="cModel" placeholder="e.g. qwen/qwen3-30b-a3b"></label>
+        <div class="hint">Works with OpenRouter, LM Studio (http://127.0.0.1:1234/v1), llama.cpp server and other OpenAI-compatible servers. The key is stored encrypted on this PC.</div>
+      </div>
+      <div class="row"><button class="btn" id="setCancel">Cancel</button><button class="btn pri" id="setSave">Save</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const log = $('#log'), q = $('#q'), send = $('#send'), modelSel = $('#model'), banner = $('#banner');
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const newId = () => 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  let chatId = newId();
+  let history = [];
+  let busyId = null;
+  let cfg = null;
+
+  const TOOL_LABEL = {
+    current_game: 'Checking the current game', player_profile: 'Looking up the player', player_matches: 'Reading match history',
+    recommend_items: 'Checking the enemy team',
+  };
+  const EMPTY = `<div id="empty"><h2>Ask about your game</h2>
+    <div>Players, ranks, match history and items against the enemy team, from deeplol and the League client.</div>
+    <div class="chips">
+      <button data-ex="Who is on the enemy team and what are their ranks?">Who is on the enemy team?</button>
+      <button data-ex="What is the enemy Ezreal's rank and recent form?">Enemy Ezreal's rank</button>
+      <button data-ex="Which boots and defensive items should I buy this game?">Which boots should I buy?</button>
+    </div></div>`;
+
+  // Small Markdown: bold, inline code, lists, paragraphs (HTML escaped first).
+  function md(s) {
+    const lines = esc(s).split('\n');
+    let html = '', list = null;
+    const inline = (t) => t.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
+    const close = () => { if (list) { html += `</${list}>`; list = null; } };
+    for (const l of lines) {
+      const ul = l.match(/^\s*[-*•]\s+(.*)/), ol = l.match(/^\s*\d+[.)]\s+(.*)/);
+      if (ul || ol) {
+        const kind = ul ? 'ul' : 'ol';
+        if (list !== kind) { close(); html += `<${kind}>`; list = kind; }
+        html += `<li>${inline((ul || ol)[1])}</li>`;
+      } else if (!l.trim()) { close(); }
+      else { close(); html += `<p>${inline(l.replace(/^#+\s*/, ''))}</p>`; }
+    }
+    close();
+    return html;
+  }
+
+  const scroll = () => { log.scrollTop = log.scrollHeight; };
+  function addMsg(role, content) {
+    $('#empty')?.remove();
+    const d = document.createElement('div');
+    d.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
+    if (role === 'user') d.textContent = content; else d.innerHTML = md(content);
+    log.appendChild(d);
+    scroll();
+    return d;
+  }
+  function showChat() {
+    log.innerHTML = history.length ? '' : EMPTY;
+    for (const m of history) addMsg(m.role, m.content);
+    try { localStorage.setItem('otp.ai.current', chatId); } catch {}
+  }
+  function persist() { if (history.length) window.otpAI.chatSave({ id: chatId, messages: history }); }
+  function newChat() {
+    if (busyId) return;
+    chatId = newId(); history = []; showChat(); q.focus();
+  }
+  async function openChat(id) {
+    const c = await window.otpAI.chatGet(id);
+    if (!c) return;
+    chatId = c.id; history = c.messages || []; showChat();
+  }
+
+  // Models of the current provider, picked in the chat box.
+  async function refreshStatus() {
+    cfg = await window.otpAI.config();
+    const st = await window.otpAI.status();
+    const r = st.ok ? await window.otpAI.models() : { models: [] };
+    const cur = st.model || '';
+    const list = (r.models || []).map((m) => m.id);
+    if (cur && !list.includes(cur) && st.ok) list.unshift(cur);
+    const provName = cfg.provider === 'custom' ? (cfg.custom.name || 'Custom') : 'Ollama';
+    modelSel.innerHTML = list.length
+      ? list.map((id) => `<option value="${esc(id)}"${id === cur ? ' selected' : ''}>${esc(id)}</option>`).join('') + '<option value="__settings">Model settings…</option>'
+      : `<option value="">${esc(provName)}: no model</option><option value="__settings">Model settings…</option>`;
+    if (!cur && list.length) { modelSel.value = list[0]; await setModel(list[0]); }
+    if (!st.ok) {
+      banner.className = 'on';
+      banner.innerHTML = cfg.provider === 'ollama'
+        ? '<b>Ollama is not running.</b> The assistant runs on a local model through Ollama. Install it from <code>ollama.com</code> (or run <code>winget install Ollama.Ollama</code> in PowerShell), then pull a model: <code>ollama pull qwen3:4b</code>. You can also use your own server in model settings.'
+        : `<b>Can't reach ${esc(provName)}.</b> ${esc(st.error || '')} Check the address and key in model settings.`;
+    } else if (!list.length) {
+      banner.className = 'on';
+      banner.innerHTML = '<b>No model yet.</b> Pull one in PowerShell, for example <code>ollama pull qwen3:4b</code>.';
+    } else banner.className = '';
+  }
+  async function setModel(id) {
+    if (!cfg || !id) return;
+    if (cfg.provider === 'custom') await window.otpAI.setConfig({ custom: { model: id } });
+    else await window.otpAI.setConfig({ ollama: { model: id } });
+  }
+  let lastModel = '';
+  modelSel.onfocus = () => { lastModel = modelSel.value; };
+  modelSel.onchange = () => {
+    if (modelSel.value === '__settings') { modelSel.value = lastModel; openSettings(); return; }
+    lastModel = modelSel.value; setModel(modelSel.value);
+  };
+
+  const listeners = new Set();
+  window.otpAI.onEvent((ev) => { for (const f of listeners) f(ev); });
+
+  async function ask(text) {
+    if (busyId || !text.trim()) return;
+    addMsg('user', text);
+    history.push({ role: 'user', content: text });
+    persist();
+    const id = String(Date.now());
+    busyId = id;
+    send.textContent = 'Stop'; send.classList.add('stop');
+    const box = document.createElement('div');
+    box.className = 'msg bot';
+    box.innerHTML = '<div class="steps"></div><div class="typing"><i></i><i></i><i></i></div>';
+    log.appendChild(box);
+    scroll();
+    const steps = box.querySelector('.steps');
+    const onEv = (ev) => {
+      if (ev.id !== id) return;
+      if (ev.type === 'tool') {
+        const c = document.createElement('span');
+        c.className = 'step';
+        c.dataset.name = ev.name;
+        const who = ev.args && (ev.args.riotId || ev.args.champion);
+        c.innerHTML = `<span class="dot"></span>${esc(TOOL_LABEL[ev.name] || ev.name)}${who ? ': ' + esc(who) : ''}`;
+        steps.appendChild(c);
+        scroll();
+      } else if (ev.type === 'tool-done') {
+        const c = [...steps.querySelectorAll('.step')].reverse().find((x) => x.dataset.name === ev.name && !x.classList.contains('ok') && !x.classList.contains('bad'));
+        if (c) c.classList.add(ev.ok ? 'ok' : 'bad');
+      }
+    };
+    listeners.add(onEv);
+    const r = await window.otpAI.chat({ id, history, model: modelSel.value && modelSel.value !== '__settings' ? modelSel.value : undefined });
+    listeners.delete(onEv);
+    box.querySelector('.typing')?.remove();
+    const body = document.createElement('div');
+    if (r.ok) {
+      body.innerHTML = md(r.content);
+      history.push({ role: 'assistant', content: r.content });
+      persist();
+    } else {
+      body.className = 'err';
+      body.textContent = r.error || 'Something went wrong.';
+    }
+    box.appendChild(body);
+    if (!steps.children.length) steps.remove();
+    scroll();
+    busyId = null;
+    send.textContent = 'Send'; send.classList.remove('stop');
+  }
+
+  send.onclick = () => {
+    if (busyId) { window.otpAI.stop(busyId); return; }
+    const t = q.value; q.value = ''; autosize(); ask(t);
+  };
+  q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send.click(); } });
+  const autosize = () => { q.style.height = 'auto'; q.style.height = Math.min(160, q.scrollHeight) + 'px'; };
+  q.addEventListener('input', autosize);
+  log.addEventListener('click', (e) => { const b = e.target.closest('[data-ex]'); if (b) ask(b.dataset.ex); });
+  $('#newBtn').onclick = newChat;
+
+  // History
+  const ago = (ts) => {
+    const m = Math.round((Date.now() - ts) / 60000);
+    return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+  };
+  async function openHistory() {
+    const list = await window.otpAI.chats();
+    const hl = $('#hlist');
+    hl.innerHTML = list.length ? list.map((c) => `<div class="hi${c.id === chatId ? ' cur' : ''}" data-id="${esc(c.id)}">
+      <div class="t"><div>${esc(c.title)}</div><span>${ago(c.updated)} · ${c.count} messages</span></div>
+      <button class="ib x" data-del="${esc(c.id)}" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div>`).join('')
+      : '<div class="none">No saved chats yet.</div>';
+    $('#hist').classList.add('on');
+    $('#histBtn').classList.add('on');
+  }
+  const closeHistory = () => { $('#hist').classList.remove('on'); $('#histBtn').classList.remove('on'); };
+  $('#histBtn').onclick = () => ($('#hist').classList.contains('on') ? closeHistory() : openHistory());
+  $('#histClose').onclick = closeHistory;
+  $('#histNew').onclick = () => { closeHistory(); newChat(); };
+  $('#hlist').addEventListener('click', async (e) => {
+    const del = e.target.closest('[data-del]');
+    if (del) {
+      e.stopPropagation();
+      await window.otpAI.chatDelete(del.dataset.del);
+      if (del.dataset.del === chatId) newChat();
+      openHistory();
+      return;
+    }
+    const it = e.target.closest('.hi');
+    if (it && !busyId) { await openChat(it.dataset.id); closeHistory(); }
+  });
+
+  // Settings
+  let prov = 'ollama';
+  const showProv = (p) => {
+    prov = p;
+    document.querySelectorAll('[data-prov]').forEach((b) => b.classList.toggle('on', b.dataset.prov === p));
+    document.querySelectorAll('[data-pane]').forEach((x) => x.classList.toggle('on', x.dataset.pane === p));
+  };
+  document.querySelectorAll('[data-prov]').forEach((b) => { b.onclick = () => showProv(b.dataset.prov); });
+  async function openSettings() {
+    cfg = await window.otpAI.config();
+    $('#oUrl').value = cfg.ollama.baseUrl || '';
+    $('#cName').value = cfg.custom.name || '';
+    $('#cUrl').value = cfg.custom.baseUrl || '';
+    $('#cKey').value = '';
+    $('#cKey').placeholder = cfg.custom.hasKey ? 'saved (leave empty to keep it)' : 'sk-…';
+    $('#cModel').value = cfg.custom.model || '';
+    showProv(cfg.provider);
+    $('#set').classList.add('on');
+  }
+  $('#gear').onclick = openSettings;
+  $('#setCancel').onclick = () => $('#set').classList.remove('on');
+  $('#setSave').onclick = async () => {
+    await window.otpAI.setConfig({
+      provider: prov,
+      ollama: { baseUrl: $('#oUrl').value },
+      custom: { name: $('#cName').value, baseUrl: $('#cUrl').value, model: $('#cModel').value, key: $('#cKey').value },
+    });
+    $('#set').classList.remove('on');
+    refreshStatus();
+  };
+
+  // Panel: close, resize from the left edge, move the window from the top bar.
+  $('#close').onclick = () => window.otpAI.close();
+  const grip = $('#grip');
+  let rs = false;
+  grip.addEventListener('pointerdown', (e) => { if (e.button) return; rs = true; grip.setPointerCapture(e.pointerId); grip.classList.add('on'); e.preventDefault(); });
+  grip.addEventListener('pointermove', (e) => { if (rs) window.otpAI.resize(e.screenX); });
+  const rsEnd = () => { if (!rs) return; rs = false; grip.classList.remove('on'); window.otpAI.resizeEnd(); };
+  grip.addEventListener('pointerup', rsEnd); grip.addEventListener('pointercancel', rsEnd);
+  const top = $('#top');
+  let dg = false;
+  top.addEventListener('pointerdown', (e) => {
+    if (e.button || e.target.closest('button')) return;
+    if (e.detail > 1) { window.otpAI.winDrag('max'); return; }
+    dg = true; top.setPointerCapture(e.pointerId); window.otpAI.winDrag('start'); e.preventDefault();
+  });
+  top.addEventListener('pointermove', () => { if (dg) window.otpAI.winDrag('move'); });
+  const dgEnd = () => { if (!dg) return; dg = false; window.otpAI.winDrag('end'); };
+  top.addEventListener('pointerup', dgEnd); top.addEventListener('pointercancel', dgEnd);
+
+  // Start: reopen the last chat.
+  (async () => {
+    let last = '';
+    try { last = localStorage.getItem('otp.ai.current') || ''; } catch {}
+    if (last) await openChat(last);
+    if (!history.length) showChat();
+    refreshStatus();
+    q.focus();
+  })();
+})();
+</script>
+</body>
+</html>

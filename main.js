@@ -1,6 +1,19 @@
 const { app, BrowserWindow, ipcMain, shell, screen, dialog } = require('electron');
 const path = require('path');
 
+// Every ipcMain.handle handler is also kept here so the AI assistant's tools can
+// reuse them (deeplol, onetricks, op.gg, LCU import...) without a second copy.
+const ipcHandlers = new Map();
+{
+  const handle = ipcMain.handle.bind(ipcMain);
+  ipcMain.handle = (ch, fn) => { ipcHandlers.set(ch, fn); return handle(ch, fn); };
+}
+const callIpc = async (ch, arg) => {
+  const fn = ipcHandlers.get(ch);
+  if (!fn) throw new Error('no handler ' + ch);
+  return fn({ sender: null }, arg);
+};
+
 // Disable transparent window hardware acceleration issues on Windows that can freeze DWM / DirectX
 app.commandLine.appendSwitch('disable-gpu-process-crash-limit');
 
@@ -294,6 +307,7 @@ function startLcuLoops() {
 // by the preloads), Windows keeps native min/max/close via titleBarOverlay, tinted
 // to match the onetricks header so the app reads as one surface.
 const CAPTION = { color: '#141415', symbolColor: '#e8e6e3', height: 66 };
+let aiSidebar = null;
 let view = null; // { webContents } alias kept so older call sites read the same
 function pageKind(url) {
   const u = String(url || '');
@@ -860,6 +874,19 @@ app.whenReady().then(async () => {
     send: (c) => { if (win && !win.isDestroyed()) win.webContents.send('otp:postgame', c); },
   });
   postGame.start();
+  // AI assistant (ai/): chat page + tool-calling agent over the app's own data.
+  require('./ai/index.js').register({
+    ipcMain,
+    ctx: { call: callIpc, getLobby: () => (lobbyWatch ? lobbyWatch.current() : null), liveGet },
+  });
+  // ...shown as a resizable panel on the right of every page.
+  aiSidebar = require('./ai/sidebar.js').createSidebar({ getWin: () => win, readState, writeState });
+  ipcMain.on('otp:ai-sidebar-toggle', () => aiSidebar.toggle());
+  ipcMain.on('otp:ai-sidebar-close', () => aiSidebar.setOpen(false));
+  ipcMain.on('otp:ai-resize', (_e, x) => aiSidebar.resizeTo(Number(x)));
+  ipcMain.on('otp:ai-resize-end', () => aiSidebar.resizeEnd());
+  ipcMain.handle('otp:ai-sidebar-get', () => aiSidebar.isOpen());
+  aiSidebar.restore();
   startLiveClientLoop();
   // Pre-warm champion and ddragon caches in background for instant lookup
   champIdToName(1).catch(() => {});
@@ -973,6 +1000,7 @@ app.whenReady().then(async () => {
     else if (where === 'tier') loadLocal('tierlist.html');
     else if (where === 'summoner') loadLocal('summoner.html');
     else if (where === 'wallpapers') loadLocal('wallpapers.html');
+    else if (where === 'ai') { if (aiSidebar) aiSidebar.toggle(); }
     else if (where === 'back') { if (wc.canGoBack()) wc.goBack(); }
   });
 

@@ -9,6 +9,7 @@
     ['guides', 'Guides', 'wide'],
     ['tier', 'Tier List', ''],
     ['summoner', 'Summoner', ''],
+    ['ai', 'Assistant', ''],
     ['discover', 'Discover', 'wide'],
   ];
   const wallIcon = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="m3.5 11.5 3-3 2 2 1.5-1.5 2.5 2.5" stroke-linecap="round"/><circle cx="10.5" cy="6" r="1"/></svg>';
