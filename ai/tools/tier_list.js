@@ -47,7 +47,14 @@ module.exports = {
     // A role list also holds off-role picks (e.g. a mid laner played top 2% of the
     // time); keep champions that are really played there.
     const all = parseQwik(res.html);
-    const real = lane === 'all' ? all : all.filter((r) => (r.pctLane ?? 100) >= 10 && (r.pr ?? 1) >= 0.5);
+    let real = lane === 'all' ? all : all.filter((r) => (r.pctLane ?? 100) >= 10 && (r.pr ?? 1) >= 0.5);
+    // Bot lane / "adc": marksmen only (Katarina, Yasuo, Vel'Koz bot are not ADCs).
+    if (lane === 'bottom') {
+      const tags = {};
+      for (const c of Object.values(d.champs)) tags[String(c.key)] = c.tags || [];
+      const adc = real.filter((r) => (tags[String(r.cid)] || []).includes('Marksman'));
+      if (adc.length >= 5) real = adc;
+    }
     const rows = (real.length >= 5 ? real : all)
       .map((r) => ({
         champion: byKey[String(r.cid)], tier: TIER_ORDER[r.tier - 1] || 'D-', lane: r.lane || undefined,
