@@ -1,5 +1,31 @@
 [
   {
+    "version": "0.1.23",
+    "date": "2026-11-21",
+    "items": [
+      [
+        "Assistant in game",
+        "Chat with the assistant in the overlay: click the box or press Ctrl+Shift+Space, Enter to send. Turn on In-Game Assistant in settings."
+      ],
+      [
+        "Augment help",
+        "In ARAM Mayhem and Arena, \"Ask about these augments\" reads the choice on your screen and shows how often each is picked on your champion."
+      ],
+      [
+        "Augments by pick rate",
+        "Mayhem and Arena augments are now shown by pick rate only, as Riot's rules require."
+      ],
+      [
+        "Easy setup",
+        "No model yet? The assistant panel installs Ollama and a model for you in one click, or gives you the commands."
+      ],
+      [
+        "Better answers",
+        "Build, item and pick questions always use live data now."
+      ]
+    ]
+  },
+  {
     "version": "0.1.22",
     "date": "2026-11-20",
     "items": [
