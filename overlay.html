@@ -12,28 +12,70 @@
   html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; user-select: none;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; }
 
-  /* Enemy summoner spell timers. No ultimate timers: Riot bans those in third-party apps. */
-  #panel { position: absolute; top: 120px; right: 16px; width: 218px; background: var(--fg); border: 1px solid var(--border);
+  /* Each part is its own small window: drag by its title, collapse with –, position saved. */
+  .w { position: absolute; right: 16px; width: 206px; background: var(--fg); border: 1px solid var(--border);
     border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .5); overflow: hidden;
     -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-  #panel.hidden { display: none; }
-  #head { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; cursor: grab;
+  .w.hidden { display: none; }
+  .w[data-w="win"] { width: 176px; }
+  .wh { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 6px 0 8px; cursor: grab;
     background: linear-gradient(180deg, rgba(16, 99, 183, .16), transparent); border-bottom: 1px solid var(--border); }
-  #head:active { cursor: grabbing; }
-  #head .t { font-size: 10px; font-weight: 800; letter-spacing: .08em; color: var(--lightText); }
-  #head .clock { margin-left: auto; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  #head button { width: 18px; height: 18px; border: 0; border-radius: 4px; background: transparent; color: var(--mute);
-    font-size: 13px; line-height: 18px; cursor: pointer; }
-  #head button:hover { background: var(--raised); color: var(--text); }
-  #panel.min #rows { display: none; }
+  .wh:active { cursor: grabbing; }
+  .wh .t { font-size: 9.5px; font-weight: 800; letter-spacing: .08em; color: var(--lightText); white-space: nowrap; }
+  .wh .x { margin-left: auto; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .wh button { width: 18px; height: 18px; border: 0; border-radius: 4px; background: transparent; color: var(--mute);
+    font-size: 13px; line-height: 18px; cursor: pointer; flex: none; }
+  .wh .x + button { margin-left: 2px; }
+  .wh .t + button { margin-left: auto; }
+  .wh button:hover { background: var(--raised); color: var(--text); }
+  .w.min .wb { display: none; }
+  .w.min .wh { border-bottom: 0; }
 
-  #rows { padding: 4px 6px 6px; }
+  /* Win chance */
+  .win { padding: 7px 9px 8px; }
+  .win .top { display: flex; align-items: baseline; gap: 6px; }
+  .win .pct { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .win .d { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .win .bar { position: relative; height: 5px; margin-top: 6px; border-radius: 3px; background: rgba(240, 80, 90, .55); overflow: hidden; }
+  .win .bar i { position: absolute; inset: 0 auto 0 0; background: #3b8fe3; border-radius: 3px 0 0 3px; transition: width .6s; }
+  .win .next { margin-top: 4px; font-size: 9.5px; color: var(--mute); }
+  .up { color: var(--ready); } .down { color: #f0505a; }
+
+  /* Build: next item + skill */
+  .help { padding: 6px 8px 7px; }
+  .hrow { display: flex; align-items: center; gap: 7px; min-height: 28px; }
+  .hrow + .hrow { margin-top: 5px; }
+  .hrow img { width: 28px; height: 28px; border-radius: 5px; flex: none; outline: 1px solid rgba(255,255,255,.1); outline-offset: -1px; }
+  .hrow .tx { min-width: 0; flex: 1; }
+  .hrow .tx b { display: block; font-size: 11.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hrow .tx span { display: block; font-size: 10px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hrow .tx span.ok { color: var(--ready); font-weight: 700; }
+  .key { width: 28px; height: 28px; flex: none; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; background: var(--raised); color: var(--lightText); }
+  .key.go { background: var(--blue); color: #fff; animation: keyPulse 1.2s ease-in-out infinite; }
+  @keyframes keyPulse { 50% { box-shadow: 0 0 0 3px rgba(16, 99, 183, .45); } }
+  .empty { font-size: 10.5px; color: var(--mute); padding: 2px 0; }
+
+  /* Lane: CS + item value vs lane opponent */
+  .stats { display: flex; gap: 6px; padding: 6px 8px 7px; }
+  .stat { flex: 1; min-width: 0; background: rgba(255,255,255,.04); border-radius: 6px; padding: 4px 6px; }
+  .stat i { display: block; font-style: normal; font-size: 9px; font-weight: 800; letter-spacing: .06em; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat b { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .stat em { font-style: normal; font-size: 10px; font-weight: 700; margin-left: 3px; font-variant-numeric: tabular-nums; }
+
+  /* Enemy spells (+ rank / one-trick marks). No ultimate timers: Riot bans those. */
+  .rows { padding: 4px 6px 6px; }
   .row { display: flex; align-items: center; gap: 6px; padding: 3px 2px; }
   .row + .row { border-top: 1px solid rgba(255, 255, 255, .04); }
   .champ { width: 34px; height: 34px; border-radius: 7px; overflow: hidden; flex: none; background: #111; }
   .champ img { width: 100%; height: 100%; display: block; transform: scale(1.08); }
+  .scout { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .tier { font-size: 10px; font-weight: 800; padding: 1px 5px; border-radius: 4px; background: #3a3d44; color: #c9c3bc; width: fit-content; }
+  .tier.t-g { background: #5a4518; color: #f0c75e; } .tier.t-e { background: #164a32; color: #4fd18b; } .tier.t-p { background: #18474a; color: #5fd0c4; }
+  .tier.t-d { background: #253a6b; color: #8fb0ff; } .tier.t-s { background: #3c454c; color: #c5d2db; } .tier.t-b { background: #4a3127; color: #d9a48f; }
+  .tier.t-i { background: #3d3530; color: #b0a39a; } .tier.t-m, .tier.t-c { background: #4a2a5c; color: #d9a0f0; }
+  .otp { font-size: 9px; font-weight: 800; color: #f5a623; letter-spacing: .04em; }
+  .otp.n { color: #8b8f92; }
   .spells { display: flex; gap: 4px; margin-left: auto; }
-
   .sp { position: relative; width: 36px; height: 36px; border-radius: 7px; overflow: hidden; cursor: pointer; flex: none;
     background: #111; outline: 1px solid rgba(255, 255, 255, .08); outline-offset: -1px; }
   .sp img { width: 100%; height: 100%; display: block; }
@@ -46,65 +88,35 @@
   .sp.ready { animation: ready 1.2s ease-out 1; }
   @keyframes ready { 0% { box-shadow: inset 0 0 0 2px var(--ready); } 100% { box-shadow: inset 0 0 0 2px transparent; } }
   .sp .h { position: absolute; left: 1px; top: 0; font-size: 8px; font-weight: 800; color: #9fd6ff; text-shadow: 0 0 3px #000; }
-
-  #hint { padding: 0 8px 6px; font-size: 10px; color: var(--mute); line-height: 1.35; }
-  /* Win chance (my team), updated every 3 game minutes */
-  #win { display: none; padding: 7px 9px 8px; border-bottom: 1px solid var(--border); }
-  #win.on { display: block; }
-  #win .top { display: flex; align-items: baseline; gap: 6px; }
-  #win .lbl { font-size: 10px; font-weight: 800; letter-spacing: .08em; color: var(--lightText); }
-  #win .pct { margin-left: auto; font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
-  #win .d { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  #win .d.up { color: #3fb950; } #win .d.down { color: #f0505a; }
-  #win .bar { position: relative; height: 5px; margin-top: 6px; border-radius: 3px; background: rgba(240, 80, 90, .55); overflow: hidden; }
-  #win .bar i { position: absolute; inset: 0 auto 0 0; background: #3b8fe3; border-radius: 3px 0 0 3px; transition: width .6s; }
-  #win .next { margin-top: 4px; font-size: 9.5px; color: var(--mute); }
-  #panel.min #win .next { display: none; }
-  /* Build & lane helper */
-  #help { display: none; padding: 6px 8px 7px; border-bottom: 1px solid var(--border); }
-  #help.on { display: block; }
-  #panel.min #help { display: none; }
-  .hrow { display: flex; align-items: center; gap: 7px; min-height: 26px; }
-  .hrow + .hrow { margin-top: 5px; }
-  .hrow img { width: 26px; height: 26px; border-radius: 5px; flex: none; outline: 1px solid rgba(255,255,255,.1); outline-offset: -1px; }
-  .hrow .tx { min-width: 0; flex: 1; }
-  .hrow .tx b { display: block; font-size: 11.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .hrow .tx span { display: block; font-size: 10px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .hrow .tx span.ok { color: var(--ready); font-weight: 700; }
-  .key { width: 26px; height: 26px; flex: none; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; background: var(--raised); color: var(--lightText); }
-  .key.go { background: var(--blue); color: #fff; animation: keyPulse 1.2s ease-in-out infinite; }
-  @keyframes keyPulse { 50% { box-shadow: 0 0 0 3px rgba(16, 99, 183, .45); } }
-  .stats { display: flex; gap: 6px; margin-top: 6px; }
-  .stat { flex: 1; min-width: 0; background: rgba(255,255,255,.04); border-radius: 6px; padding: 4px 6px; }
-  .stat i { display: block; font-style: normal; font-size: 9px; font-weight: 800; letter-spacing: .06em; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .stat b { font-size: 12px; font-variant-numeric: tabular-nums; }
-  .stat em { font-style: normal; font-size: 10px; font-weight: 700; margin-left: 3px; font-variant-numeric: tabular-nums; }
-  .up { color: var(--ready); } .down { color: #f0505a; }
-  /* Enemy rank badge / one-trick mark */
-  .scout { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .tier { font-size: 10px; font-weight: 800; padding: 1px 5px; border-radius: 4px; background: #3a3d44; color: #c9c3bc; width: fit-content; }
-  .tier.t-g { background: #5a4518; color: #f0c75e; } .tier.t-e { background: #164a32; color: #4fd18b; } .tier.t-p { background: #18474a; color: #5fd0c4; }
-  .tier.t-d { background: #253a6b; color: #8fb0ff; } .tier.t-s { background: #3c454c; color: #c5d2db; } .tier.t-b { background: #4a3127; color: #d9a48f; }
-  .tier.t-i { background: #3d3530; color: #b0a39a; } .tier.t-m, .tier.t-c { background: #4a2a5c; color: #d9a0f0; }
-  .otp { font-size: 9px; font-weight: 800; color: #f5a623; letter-spacing: .04em; }
-  .otp.n { color: #8b8f92; }
+  .hint { padding: 0 8px 6px; font-size: 10px; color: var(--mute); line-height: 1.35; }
 </style>
 </head>
 <body>
-  <div id="panel" class="hidden">
-    <div id="head"><span class="t">ENEMY SPELLS</span><span class="clock" id="clock">0:00</span><button id="min" title="Collapse">–</button></div>
-    <div id="win"><div class="top"><span class="lbl">WIN CHANCE</span><span class="d" id="wd"></span><span class="pct" id="wp">–</span></div><div class="bar"><i id="wb" style="width:50%"></i></div><div class="next" id="wn"></div></div>
-    <div id="help"></div>
-    <div id="rows"></div>
-    <div id="hint">Click = used · Right-click = reset</div>
+  <div class="w hidden" data-w="win">
+    <div class="wh"><span class="t">WIN CHANCE</span><button class="min" title="Collapse">–</button></div>
+    <div class="wb win"><div class="top"><span class="pct" id="wp">–</span><span class="d" id="wd"></span></div><div class="bar"><i id="wb" style="width:50%"></i></div><div class="next" id="wn"></div></div>
+  </div>
+  <div class="w hidden" data-w="build">
+    <div class="wh"><span class="t">BUILD</span><button class="min" title="Collapse">–</button></div>
+    <div class="wb help" id="build"></div>
+  </div>
+  <div class="w hidden" data-w="lane">
+    <div class="wh"><span class="t" id="laneT">LANE</span><button class="min" title="Collapse">–</button></div>
+    <div class="wb stats" id="lane"></div>
+  </div>
+  <div class="w hidden" data-w="spells">
+    <div class="wh"><span class="t" id="spellsT">ENEMY SPELLS</span><span class="x" id="clock">0:00</span><button class="min" title="Collapse">–</button></div>
+    <div class="wb"><div class="rows" id="rows"></div><div class="hint" id="hint">Click = used · Right-click = reset</div></div>
   </div>
 <script>
 (function () {
   const API = window.otpOverlayAPI;
   if (!API) return;
-  const panel = document.getElementById('panel');
+  const W = Object.fromEntries([...document.querySelectorAll('.w')].map((el) => [el.dataset.w, el]));
+  const ORDER = ['win', 'build', 'lane', 'spells'];
   const rows = document.getElementById('rows');
   const clock = document.getElementById('clock');
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 
   // Timers run on game time: endsAt is in game seconds, "now" is the last reported
   // game time plus wall time since that report (so pauses and lag don't drift much).
@@ -113,36 +125,54 @@
   const timers = new Map(); // key -> { endsAt, total }
   const fmt = (s) => { s = Math.max(0, Math.ceil(s)); return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s}`; };
 
-  // Position + collapsed state
-  try {
-    const st = JSON.parse(localStorage.getItem('otp.overlay') || '{}');
-    if (st.left != null) { panel.style.left = st.left + 'px'; panel.style.top = st.top + 'px'; panel.style.right = 'auto'; }
-    if (st.min) panel.classList.add('min');
-  } catch {}
+  // ---- Positions: each window remembers its place and collapsed state ----
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('otp.overlay.w') || '{}'); } catch {}
   const save = () => {
-    const r = panel.getBoundingClientRect();
-    try { localStorage.setItem('otp.overlay', JSON.stringify({ left: Math.round(r.left), top: Math.round(r.top), min: panel.classList.contains('min') })); } catch {}
+    const out = {};
+    for (const [id, el] of Object.entries(W)) {
+      if (el.style.left === '') continue;
+      out[id] = { left: parseFloat(el.style.left), top: parseFloat(el.style.top), min: el.classList.contains('min') };
+    }
+    for (const [id, el] of Object.entries(W)) if (!out[id] && el.classList.contains('min')) out[id] = { min: true };
+    saved = out;
+    try { localStorage.setItem('otp.overlay.w', JSON.stringify(out)); } catch {}
   };
-  document.getElementById('min').onclick = (e) => { e.stopPropagation(); panel.classList.toggle('min'); save(); };
+  for (const [id, el] of Object.entries(W)) {
+    const st = saved[id];
+    if (st && st.left != null) { el.style.left = st.left + 'px'; el.style.top = st.top + 'px'; el.style.right = 'auto'; }
+    if (st && st.min) el.classList.add('min');
+    el.querySelector('.min').onclick = (e) => { e.stopPropagation(); el.classList.toggle('min'); save(); stack(); };
+    const head = el.querySelector('.wh');
+    let drag = null;
+    head.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button')) return;
+      const r = el.getBoundingClientRect();
+      drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+      try { API.setDragging(true); } catch {}
+      head.setPointerCapture(e.pointerId);
+    });
+    head.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const x = Math.max(0, Math.min(innerWidth - el.offsetWidth, e.clientX - drag.dx));
+      const y = Math.max(0, Math.min(innerHeight - 30, e.clientY - drag.dy));
+      el.style.left = x + 'px'; el.style.top = y + 'px'; el.style.right = 'auto';
+    });
+    head.addEventListener('pointerup', () => { if (drag) { drag = null; save(); try { API.setDragging(false); } catch {} } });
+  }
+  // Windows never moved stack on the right, one under the other.
+  function stack() {
+    let y = 120;
+    for (const id of ORDER) {
+      const el = W[id];
+      if (el.classList.contains('hidden') || el.style.left !== '') continue; // moved ones keep their place
+      el.style.top = y + 'px';
+      y += el.offsetHeight + 8;
+    }
+  }
+  const show = (id, on) => { W[id].classList.toggle('hidden', !on); };
 
-  const head = document.getElementById('head');
-  let drag = null;
-  head.addEventListener('pointerdown', (e) => {
-    if (e.target.id === 'min') return;
-    const r = panel.getBoundingClientRect();
-    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
-    try { API.setDragging(true); } catch {}
-    head.setPointerCapture(e.pointerId);
-  });
-  head.addEventListener('pointermove', (e) => {
-    if (!drag) return;
-    // (shape follows via the style MutationObserver)
-    const x = Math.max(0, Math.min(innerWidth - panel.offsetWidth, e.clientX - drag.dx));
-    const y = Math.max(0, Math.min(innerHeight - 40, e.clientY - drag.dy));
-    panel.style.left = x + 'px'; panel.style.top = y + 'px'; panel.style.right = 'auto';
-  });
-  head.addEventListener('pointerup', () => { if (drag) { drag = null; save(); try { API.setDragging(false); } catch {} } });
-
+  // ---- Enemy spell timers ----
   function paint() {
     const g = Math.max(0, Math.floor(now()));
     clock.textContent = gameTime == null ? '--:--' : Math.floor(g / 60) + ':' + String(g % 60).padStart(2, '0');
@@ -160,7 +190,6 @@
     });
   }
   setInterval(paint, 250);
-
   rows.addEventListener('click', (e) => {
     const el = e.target.closest('.sp');
     if (!el) return;
@@ -176,39 +205,6 @@
     el.classList.remove('cd');
   });
 
-  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-  let lastKey = '';
-  function render(payload) {
-    const players = (payload && payload.players) || [];
-    if (payload && payload.gameTime != null) { gameTime = payload.gameTime; gameTimeAt = performance.now(); }
-    const win = payload && payload.win;
-    const help = payload && payload.helper;
-    if (!players.length && !win && !help) { panel.classList.add('hidden'); return; }
-    panel.classList.remove('hidden');
-    paintWin(win);
-    paintHelp(help);
-    const spells = players.some((p) => p.spells.length);
-    document.querySelector('#head .t').textContent = spells ? 'ENEMY SPELLS' : help ? 'IN GAME' : 'WIN CHANCE';
-    document.getElementById('win').querySelector('.lbl').style.display = spells || help ? '' : 'none';
-    document.getElementById('rows').style.display = players.length ? '' : 'none';
-    document.getElementById('hint').style.display = spells ? '' : 'none';
-    // Rebuild only when the lineup / spells / haste change, so hover states and timers stay.
-    const key = JSON.stringify(players.map((p) => [p.id, p.icon, p.scout, p.spells.map((s) => s.icon + s.cd)]));
-    if (key !== lastKey) {
-      lastKey = key;
-      rows.innerHTML = players.map((p) => `<div class="row" title="${esc(p.name)} — ${esc(p.champ)}">
-        <div class="champ"><img src="${esc(p.icon)}" alt=""></div>
-        ${scoutHtml(p.scout)}
-        <div class="spells">${p.spells.map((s) => `<div class="sp" data-k="${esc(p.id + ':' + s.name)}" data-cd="${s.cd}" title="${esc(s.name)} · ${fmt(s.cd)}${p.haste ? ' (+' + p.haste + ' haste)' : ''}">
-          <img src="${esc(s.icon)}" alt="">${p.haste ? '<span class="h">+' + p.haste + '</span>' : ''}<div class="ring"><span></span></div></div>`).join('')}</div>
-      </div>`).join('');
-      const live = new Set(players.flatMap((p) => p.spells.map((s) => p.id + ':' + s.name)));
-      [...timers.keys()].forEach((k) => { if (!live.has(k)) timers.delete(k); });
-    }
-    paint();
-  }
-
-  // Enemy rank (e.g. G2) and one-trick mark, from the lobby scouting.
   function scoutHtml(sc) {
     if (!sc) return '';
     const t = String(sc.tier || 'U');
@@ -216,37 +212,27 @@
     return `<div class="scout"><span class="tier t-${esc(t.charAt(0).toLowerCase())}">${esc(t)}</span>${sub}</div>`;
   }
 
-  // Next core item, skill to level, CS and lane gold for me.
-  function paintHelp(h) {
-    const box = document.getElementById('help');
-    box.classList.toggle('on', !!h);
-    if (!h) return;
-    const fmtG = (n) => Number(n).toLocaleString('en-US');
-    const sign = (n) => (n > 0 ? '+' : n < 0 ? '−' : '±') + fmtG(Math.abs(n));
-    let html = '';
-    if (h.next && !h.next.done) {
-      html += `<div class="hrow"><img src="${esc(h.next.icon)}" alt=""><div class="tx"><b>${esc(h.next.name)}</b>${h.next.short ? `<span>${fmtG(h.next.short)} gold short</span>` : '<span class="ok">Ready to buy</span>'}</div></div>`;
-    } else if (h.next && h.next.done) {
-      html += '<div class="hrow"><div class="tx"><b>Core build done</b></div></div>';
-    }
-    if (h.skill && h.skill.order) {
-      const k = h.skill.next || h.skill.order.charAt(0);
-      html += `<div class="hrow"><span class="key${h.skill.next ? ' go' : ''}">${esc(k)}</span><div class="tx"><b>${h.skill.next ? 'Level up ' + esc(h.skill.next) : 'Skill order'}</b><span>Max ${esc(h.skill.order)}</span></div></div>`;
-    }
-    const cs = h.cs || {};
-    const csd = cs.opp != null ? cs.cs - cs.opp : null;
-    let st = `<div class="stat"><i>CS</i><b>${cs.cs ?? 0}</b><em style="color:#8b8f92">${cs.perMin ?? 0}/m</em>`;
-    if (csd != null && csd !== 0) st += `<em class="${csd > 0 ? 'up' : 'down'}">${csd > 0 ? '+' : '−'}${Math.abs(csd)}</em>`;
-    st += '</div>';
-    if (h.lane) st += `<div class="stat" title="Item value vs ${esc(h.lane.opp)}"><i>ITEMS VS ${esc(String(h.lane.opp).toUpperCase())}</i><b class="${h.lane.diff > 0 ? 'up' : h.lane.diff < 0 ? 'down' : ''}">${sign(h.lane.diff)}</b></div>`;
-    html += `<div class="stats">${st}</div>`;
-    box.innerHTML = html;
+  let lastKey = '';
+  function paintSpells(players) {
+    const spells = players.some((p) => p.spells.length);
+    document.getElementById('spellsT').textContent = spells ? 'ENEMY SPELLS' : 'ENEMIES';
+    document.getElementById('hint').style.display = spells ? '' : 'none';
+    // Rebuild only when the lineup / spells / haste / ranks change, so timers stay.
+    const key = JSON.stringify(players.map((p) => [p.id, p.icon, p.scout, p.spells.map((s) => s.icon + s.cd)]));
+    if (key === lastKey) return;
+    lastKey = key;
+    rows.innerHTML = players.map((p) => `<div class="row" title="${esc(p.name)} — ${esc(p.champ)}">
+      <div class="champ"><img src="${esc(p.icon)}" alt=""></div>
+      ${scoutHtml(p.scout)}
+      <div class="spells">${p.spells.map((s) => `<div class="sp" data-k="${esc(p.id + ':' + s.name)}" data-cd="${s.cd}" title="${esc(s.name)} · ${fmt(s.cd)}${p.haste ? ' (+' + p.haste + ' haste)' : ''}">
+        <img src="${esc(s.icon)}" alt="">${p.haste ? '<span class="h">+' + p.haste + '</span>' : ''}<div class="ring"><span></span></div></div>`).join('')}</div>
+    </div>`).join('');
+    const live = new Set(players.flatMap((p) => p.spells.map((s) => p.id + ':' + s.name)));
+    [...timers.keys()].forEach((k) => { if (!live.has(k)) timers.delete(k); });
   }
 
+  // ---- Win chance ----
   function paintWin(w) {
-    const box = document.getElementById('win');
-    box.classList.toggle('on', !!w);
-    if (!w) return;
     const fmtS = (n) => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
     if (w.pct == null) {
       document.getElementById('wp').textContent = '–';
@@ -264,30 +250,77 @@
     document.getElementById('wn').textContent = w.nextIn != null ? `Next update in ${fmtS(w.nextIn)}` : '';
   }
 
-  // main takes mouse input only while the real cursor is over this rect (polled every
-  // 50 ms); everywhere else the window ignores the mouse and clicks go to the game.
+  // ---- Build: next core item + skill to level ----
+  function paintBuild(h) {
+    const fmtG = (n) => Number(n).toLocaleString('en-US');
+    let html = '';
+    if (h.next && !h.next.done) {
+      html += `<div class="hrow"><img src="${esc(h.next.icon)}" alt=""><div class="tx"><b>${esc(h.next.name)}</b>${h.next.short ? `<span>${fmtG(h.next.short)} gold short</span>` : '<span class="ok">Ready to buy</span>'}</div></div>`;
+    } else if (h.next && h.next.done) {
+      html += '<div class="hrow"><div class="tx"><b>Core build done</b><span>Situational items now</span></div></div>';
+    }
+    if (h.skill && h.skill.order) {
+      const k = h.skill.next || h.skill.order.charAt(0);
+      html += `<div class="hrow"><span class="key${h.skill.next ? ' go' : ''}">${esc(k)}</span><div class="tx"><b>${h.skill.next ? 'Level up ' + esc(h.skill.next) : 'Skill order'}</b><span>Max ${esc(h.skill.order)}</span></div></div>`;
+    }
+    document.getElementById('build').innerHTML = html || '<div class="empty">Loading the op.gg build…</div>';
+  }
+
+  // ---- Lane: CS and item value vs lane opponent ----
+  function paintLane(h) {
+    const fmtG = (n) => Number(n).toLocaleString('en-US');
+    const sign = (n) => (n > 0 ? '+' : n < 0 ? '−' : '±') + fmtG(Math.abs(n));
+    const cs = h.cs || {};
+    const csd = cs.opp != null ? cs.cs - cs.opp : null;
+    let st = `<div class="stat"><i>CS · ${cs.perMin ?? 0}/MIN</i><b>${cs.cs ?? 0}</b>`;
+    if (csd != null && csd !== 0) st += `<em class="${csd > 0 ? 'up' : 'down'}">${csd > 0 ? '+' : '−'}${Math.abs(csd)}</em>`;
+    st += '</div>';
+    if (h.lane) st += `<div class="stat" title="Item value vs ${esc(h.lane.opp)}"><i>ITEMS</i><b class="${h.lane.diff > 0 ? 'up' : h.lane.diff < 0 ? 'down' : ''}">${sign(h.lane.diff)}</b></div>`;
+    document.getElementById('laneT').textContent = h.lane ? `LANE VS ${String(h.lane.opp).toUpperCase()}` : 'LANE';
+    document.getElementById('lane').innerHTML = st;
+  }
+
+  function render(payload) {
+    const players = (payload && payload.players) || [];
+    if (payload && payload.gameTime != null) { gameTime = payload.gameTime; gameTimeAt = performance.now(); }
+    const win = payload && payload.win;
+    const help = payload && payload.helper;
+    show('win', !!win); if (win) paintWin(win);
+    show('build', !!help); if (help) paintBuild(help);
+    show('lane', !!help); if (help) paintLane(help);
+    show('spells', players.length > 0); if (players.length) paintSpells(players);
+    stack();
+    paint();
+  }
+
+  // main takes mouse input only while the real cursor is over one of these rects
+  // (polled every 50 ms); elsewhere the window ignores the mouse, clicks reach the game.
   let lastShape = '';
   function reportShape() {
-    let rects = [];
-    if (!panel.classList.contains('hidden')) {
-      const r = panel.getBoundingClientRect();
-      rects = [{ x: r.left - 1, y: r.top - 1, width: r.width + 2, height: r.height + 2 }];
+    const rects = [];
+    for (const el of Object.values(W)) {
+      if (el.classList.contains('hidden')) continue;
+      const r = el.getBoundingClientRect();
+      rects.push({ x: r.left - 1, y: r.top - 1, width: r.width + 2, height: r.height + 2 });
     }
     const k = JSON.stringify(rects.map((r) => [r.x, r.y, r.width, r.height].map(Math.round)));
     if (k === lastShape) return;
     lastShape = k;
     try { API.setShape(rects); } catch {}
   }
-  new ResizeObserver(reportShape).observe(panel);
-  new MutationObserver(reportShape).observe(panel, { attributes: true, attributeFilter: ['class', 'style'] });
-  window.addEventListener('resize', () => { clampIntoView(); reportShape(); });
-  // Keep the saved position inside the game window if its size changed.
-  function clampIntoView() {
-    if (panel.style.left === '') return;
-    const x = Math.max(0, Math.min(innerWidth - panel.offsetWidth, parseFloat(panel.style.left) || 0));
-    const y = Math.max(0, Math.min(innerHeight - 40, parseFloat(panel.style.top) || 0));
-    panel.style.left = x + 'px'; panel.style.top = y + 'px';
+  for (const el of Object.values(W)) {
+    new ResizeObserver(reportShape).observe(el);
+    new MutationObserver(reportShape).observe(el, { attributes: true, attributeFilter: ['class', 'style'] });
   }
+  // Keep saved positions inside the game window if its size changed.
+  window.addEventListener('resize', () => {
+    for (const el of Object.values(W)) {
+      if (el.style.left === '') continue;
+      el.style.left = Math.max(0, Math.min(innerWidth - el.offsetWidth, parseFloat(el.style.left) || 0)) + 'px';
+      el.style.top = Math.max(0, Math.min(innerHeight - 30, parseFloat(el.style.top) || 0)) + 'px';
+    }
+    reportShape();
+  });
 
   API.onPlayersUpdate(render);
 })();

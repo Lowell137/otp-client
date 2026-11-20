@@ -80,8 +80,12 @@ async function helper(all, ddragonBase) {
   const me = (all.allPlayers || []).find((p) => (p.riotId || p.summonerName) === meName);
   if (!me) return null;
   const t = Math.max(1, (all.gameData?.gameTime || 0) / 60);
-  const opp = (all.allPlayers || []).find((p) => p.team !== me.team && p.position && p.position === me.position);
-  const champKey = String(me.rawChampionName || '').replace('game_character_displayname_', '') || String(me.championName || '').replace(/[^A-Za-z]/g, '');
+  // Lane opponent: same position; with no positions (practice tool, customs) the
+  // only enemy if there is just one.
+  const enemies = (all.allPlayers || []).filter((p) => p.team !== me.team);
+  const hasPos = me.position && me.position !== 'NONE';
+  const opp = (hasPos && enemies.find((p) => p.position === me.position)) || (enemies.length === 1 ? enemies[0] : null);
+  const champKey = String(me.rawChampionName || '').replace(/^.*_displayname_/, '') || String(me.championName || '').replace(/[^A-Za-z]/g, '');
   const out = {
     cs: { cs: me.scores?.creepScore || 0, perMin: +((me.scores?.creepScore || 0) / t).toFixed(1), opp: opp ? (opp.scores?.creepScore || 0) : null },
     lane: opp ? { opp: opp.championName, diff: itemValue(me, data) - itemValue(opp, data) } : null,

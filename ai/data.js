@@ -69,7 +69,7 @@ async function gamePlayers(ctx) {
     const meName = await ctx.liveGet('/liveclientdata/activeplayername').catch(() => '');
     const all = (list || []).map((p) => {
       const [name, tag] = String(p.riotId || p.summonerName || '').split('#');
-      return { name, tag: tag || '', champ: (p.rawChampionName || '').replace('game_character_displayname_', '') || p.championName, role: String(p.position || '').toLowerCase(), team: p.team, me: (p.riotId || p.summonerName) === meName };
+      return { name, tag: tag || '', champ: (p.rawChampionName || '').replace(/^.*_displayname_/, '') || p.championName, role: String(p.position || '').toLowerCase(), team: p.team, me: (p.riotId || p.summonerName) === meName };
     });
     const mine = all.find((p) => p.me)?.team;
     return { phase: 'InGame', me: all.find((p) => p.me) || {}, allies: all.filter((p) => p.team === mine), enemies: all.filter((p) => p.team !== mine) };

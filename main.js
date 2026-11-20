@@ -618,7 +618,7 @@ async function buildOverlayPayload(data) {
     const s2 = p.summonerSpells?.summonerSpellTwo?.displayName || 'Teleport';
     const [i1, i2] = await Promise.all([spellInfoCurrent(s1, ddragon), spellInfoCurrent(s2, ddragon)]);
     const cd = (base) => Math.round(base * 100 / (100 + haste));
-    const champKey = String(p.rawChampionName || '').replace('game_character_displayname_', '') || p.championName.replace(/[^A-Za-z]/g, '');
+    const champKey = String(p.rawChampionName || '').replace(/^.*_displayname_/, '') || p.championName.replace(/[^A-Za-z]/g, '');
     players.push({
       id, name: p.riotIdGameName || p.summonerName || id, champ: p.championName, champKey, level: p.level || null,
       position: p.position || '', haste,
