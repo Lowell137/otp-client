@@ -318,30 +318,32 @@ function paintExtra() {
 }
 // Season champion stats (deeplol champion-stat) in the left column, filtered by the
 // queue tab: Total / Ranked Solo / Ranked Flex.
+let champTab = null; // null: follow the match filter
+let champMore = false;
+const kdaCol = (k) => (k >= 5 ? '#f5a623' : k >= 3 ? '#4c97ff' : k >= 2 ? '#10b981' : '#8f96a3');
 function paintSeasonChamps() {
   const ex = lastDlRes?.extra;
   const cb = document.querySelector('#otp-champsbox');
-  const cl = document.querySelector('#otp-champlabel');
   if (!ex || !cb) return;
-  const qk = curQueue === 420 ? 'ranked_solo_5x5' : curQueue === 440 ? 'ranked_flex_sr' : 'total';
-  const list = (ex.champStats?.[qk] || []).slice(0, 12);
-  if (cl) cl.textContent = `Season champions${qk === 'total' ? '' : qk === 'ranked_solo_5x5' ? ' · Solo' : ' · Flex'}`;
-  if (!list.length) { cb.innerHTML = '<div class="otp-serr" style="padding:10px;">No games this season</div>'; return; }
+  const qk = champTab || (curQueue === 420 ? 'ranked_solo_5x5' : curQueue === 440 ? 'ranked_flex_sr' : 'total');
+  const all = ex.champStats?.[qk] || [];
+  const list = all.slice(0, champMore ? 20 : 5);
   const ddv = (lastDlRes.profile?.iconUrl || '').match(/cdn\/([^/]+)\//)?.[1] || '16.23.1';
-  cb.innerHTML = list.map((c) => {
-    const wrCol = c.wr >= 60 ? '#10b981' : c.wr <= 40 ? '#ef4444' : '#e2e8f0';
-    return `<div class="otp-side-champ otp-season-champ" data-build="${esc(c.champ)}" title="Open the ${esc(c.champ)} build">
-      <img src="https://ddragon.leagueoflegends.com/cdn/${ddv}/img/champion/${esc(c.champ)}.png">
-      <div>
-        <div class="otp-side-champ-name">${esc(c.champ)}</div>
-        <div class="otp-side-champ-kda">${(c.kda ?? 0).toFixed(2)} KDA · ${(c.cspm ?? 0).toFixed(1)} CS/m</div>
-      </div>
-      <div class="otp-side-champ-right">
-        <div class="otp-side-champ-wr" style="color:${wrCol}">${Math.round(c.wr)}%</div>
-        <div class="otp-side-champ-count">${c.games} games</div>
-      </div>
+  const tabs = [['total', 'Total'], ['ranked_solo_5x5', 'Ranked Solo'], ['ranked_flex_sr', 'Ranked Flex']]
+    .map(([k, l]) => `<button class="${k === qk ? 'on' : ''}" data-ct="${k}">${l}</button>`).join('');
+  const rows = list.length ? list.map((c) => {
+    const kda = c.kda ?? 0;
+    return `<div class="otp-sc-row" data-build="${esc(c.champ)}" title="Open the ${esc(c.champ)} build">
+      <img src="https://ddragon.leagueoflegends.com/cdn/${ddv}/img/champion/${esc(c.champ)}.png" alt="">
+      <div class="l"><b>${esc(c.champ)}</b><span style="color:${kdaCol(kda)}">${kda.toFixed(2)} KDA</span></div>
+      <div class="r"><b class="${c.wr >= 60 ? 'hi' : ''}">${Math.round(c.wr)} %</b><span>${c.games} games</span></div>
     </div>`;
-  }).join('');
+  }).join('') : '<div class="otp-serr" style="padding:14px;">No games this season</div>';
+  const more = all.length > 5 ? `<button class="otp-sc-more">${champMore ? 'Less' : 'More'}</button>` : '';
+  cb.innerHTML = `<div class="otp-side-tabs">${tabs}</div>${rows}${more}`;
+  cb.querySelectorAll('[data-ct]').forEach((x) => { x.onclick = () => { champTab = x.dataset.ct; paintSeasonChamps(); }; });
+  const mb = cb.querySelector('.otp-sc-more');
+  if (mb) mb.onclick = () => { champMore = !champMore; paintSeasonChamps(); };
 }
 
 function renderSummoner(res, showBack, isRenew) {
@@ -378,12 +380,10 @@ function renderSummoner(res, showBack, isRenew) {
           <div class="otp-side-card-head"><span>Ranked</span></div>
           <div id="otp-rankedbox"></div>
         </div>
-        <div class="otp-side-card">
-          <div class="otp-side-card-head"><span id="otp-champlabel">Champions</span></div>
+        <div class="otp-side-card flat">
           <div id="otp-champsbox"></div>
         </div>
-        <div class="otp-side-card">
-          <div class="otp-side-card-head"><span>Recently played with</span></div>
+        <div class="otp-side-card flat">
           <div id="otp-withbox"></div>
         </div>
       </div>
@@ -554,7 +554,7 @@ function matchRowHtml(m, mi) {
       <div class="otp-m-ai">
         <span class="lbl">AI-Score</span>
         ${aiBadge(m.ai)}
-        ${place ? `<span class="pl">${m.mvp ? '👑 ' : ''}${ord(place)}</span>` : ''}
+        ${place ? `<span class="pl">${m.mvp || m.ace ? crownSvg(m.win) : ''}${ord(place)}</span>` : ''}
       </div>
       <div class="otp-m-teams"><div>${sideList('BLUE')}</div><div>${sideList('RED')}</div></div>
       <span class="otp-m-chev"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 4 4 4-4"/></svg></span>
@@ -672,8 +672,6 @@ function paintMatchData() {
   }
 
   // 3. Left Column: Champions Sidebar list
-  const cl = document.querySelector('#otp-champlabel');
-  if (cl) cl.textContent = `Champions (${st.n})`;
   const cb = document.querySelector('#otp-champsbox');
   if (cb) {
     cb.innerHTML = st.champs.slice(0, 6).map((c) => {
@@ -820,6 +818,8 @@ async function retryFailedMatches() {
 }
 
 // "GOLD 2" -> "G2", Master+ -> M / GM / C, none -> ''
+// MVP / ACE crown: gold on the winning team, lavender on the losing one
+const crownSvg = (win) => `<svg class="otp-crown ${win ? 'mvp' : 'ace'}" width="14" height="11" viewBox="0 0 24 18" fill="currentColor"><path d="M2 4.5 7.5 9 12 1l4.5 8L22 4.5 20 15H4L2 4.5Z"/><rect x="4" y="15.6" width="16" height="2.4" rx="1"/></svg>`;
 function tierAbbr(t) {
   const [tier, div] = String(t || '').trim().toUpperCase().split(/\s+/);
   if (!tier || tier === 'NONE' || tier === 'UNRANKED') return '';
@@ -908,7 +908,7 @@ function toggleMatchExpand(mi) {
           </div>
           <div class="otp-dl-aicell">
             ${aiBadge(t.ai)}
-            <span class="otp-dl-rank ${isMvp ? 'mvp' : ''}">${isMvp ? '<i>👑</i>' : ''}${ord(rk)}</span>
+            <span class="otp-dl-rank ${isMvp ? 'mvp' : ''}">${isMvp ? crownSvg(t.win) : ''}${ord(rk)}</span>
           </div>
           <div class="otp-dl-kdacell">
             <div class="kda-nums">${t.kills} / ${t.deaths} / ${t.assists}</div>
@@ -1248,15 +1248,15 @@ function paintPlayedWith() {
       acc.set(k, e);
     }
   }
-  const list = [...acc.values()].filter((e) => e.rel === pwTab && e.games >= 2).sort((a, b) => b.games - a.games || b.wins - a.wins).slice(0, 8);
+  const list = [...acc.values()].filter((e) => e.rel === pwTab).sort((a, b) => b.games - a.games || b.wins - a.wins).slice(0, 10);
   const n = (lastDlRes._view || []).length;
-  box.innerHTML = `<div class="otp-pw-tabs"><button class="${pwTab === 'with' ? 'on' : ''}" data-pw="with">With</button><button class="${pwTab === 'against' ? 'on' : ''}" data-pw="against">Against</button></div>`
+  box.innerHTML = `<div class="otp-pw-title">Recently Played With (Recent ${n} Games)</div><div class="otp-pw-tabs"><button class="${pwTab === 'with' ? 'on' : ''}" data-pw="with">With</button><button class="${pwTab === 'against' ? 'on' : ''}" data-pw="against">Against</button></div>`
     + (list.length
-      ? `<div class="otp-pw-head"><span>Summoner</span><span>Games</span><span>W-L</span><span>WR</span></div>` + list.map((e) => {
+      ? `<div class="otp-pw-head"><span>Summoner</span><span>Games</span><span>Win Lose</span><span>WR</span></div>` + list.map((e) => {
         const wr = Math.round((e.wins / e.games) * 100);
-        return `<div class="otp-pw-row"><span class="who otp-plink" data-name="${esc(e.name)}" data-tag="${esc(e.tag)}" title="${esc(e.name)} #${esc(e.tag)}: open profile"><img src="${e.icon}" alt=""><span class="nm"><b>${esc(e.name)}</b><em>#${esc(e.tag)}</em></span></span><span>${e.games}</span><span>${e.wins}-${e.games - e.wins}</span><span class="${wr >= 55 ? 'up' : wr <= 45 ? 'down' : ''}">${wr}%</span></div>`;
+        return `<div class="otp-pw-row"><span class="who otp-plink" data-name="${esc(e.name)}" data-tag="${esc(e.tag)}" title="${esc(e.name)} #${esc(e.tag)}: open profile"><img src="${e.icon}" alt=""><span class="nm"><b>${esc(e.name)}</b><em>${e.tag ? '#' + esc(e.tag) : ''}</em></span></span><span>${e.games}</span><span>${e.wins}-${e.games - e.wins}</span><span>${wr}%</span></div>`;
       }).join('')
-      : `<div class="otp-serr" style="padding:10px;">Nobody twice in the last ${n} games</div>`);
+      : `<div class="otp-serr" style="padding:12px;">No players in the last ${n} games</div>`);
   box.querySelectorAll('[data-pw]').forEach((b) => { b.onclick = () => { pwTab = b.dataset.pw; paintPlayedWith(); }; });
   box.querySelectorAll('.otp-plink').forEach((el) => { el.onclick = (e) => { e.stopPropagation(); openPlayerProfile(el.dataset.name, el.dataset.tag); }; });
 }
