@@ -219,7 +219,7 @@
 
   const TOOL_LABEL = {
     current_game: 'Checking the current game', player_profile: 'Looking up the player', player_matches: 'Reading match history',
-    recommend_items: 'Checking the enemy team', tier_list: 'Reading the tier list', suggest_pick: 'Finding picks', duo_synergy: 'Checking duo synergy', champion_build: 'Getting the build', patch_notes: 'Reading patch notes', lol_wiki: 'Searching the wiki', read_page: 'Reading a page',
+    recommend_items: 'Checking the enemy team', tier_list: 'Reading the tier list', suggest_pick: 'Finding picks', last_game: 'Loading the game', duo_synergy: 'Checking duo synergy', champion_build: 'Getting the build', patch_notes: 'Reading patch notes', lol_wiki: 'Searching the wiki', read_page: 'Reading a page',
   };
   const EMPTY = `<div id="empty"><h2>Ask about your game</h2>
     <div>Players, ranks, match history and items against the enemy team, from deeplol and the League client. Add a screenshot with +.</div>
@@ -377,10 +377,11 @@
     let content = text.trim() || (files.some((f) => f.kind === 'image') ? 'What do you see in this screenshot?' : '');
     for (const f of files.filter((x) => x.kind === 'text')) content += `\n\n[File: ${f.name}]\n${f.text}`;
     const images = files.filter((x) => x.kind === 'image').map((x) => x.data);
-    history.push({ role: 'user', content: text || content, files: files.map((f) => f.name) });
+    // Images stay with their message for the rest of this chat, so follow-ups
+    // ("which one is me?") still see the screenshot. Saved chats keep only names.
+    history.push({ role: 'user', content: text || content, files: files.map((f) => f.name), images: images.length ? images : undefined, sent: content });
     persist();
-    const send2 = history.map((m) => ({ role: m.role, content: m.content }));
-    send2[send2.length - 1] = { role: 'user', content, images: images.length ? images : undefined };
+    const send2 = history.map((m) => ({ role: m.role, content: m.sent || m.content, images: m.images }));
     const id = String(Date.now());
     busyId = id;
     send.classList.add('stop'); send.disabled = false; send.title = 'Stop';
@@ -427,6 +428,7 @@
       const er = r.error || '';
       body.textContent = /401|403|auth/i.test(er) ? 'The server wants an API key (or the key is wrong). Click the name below the chat box.'
         : /no model loaded/i.test(er) ? 'The server has no model loaded. In Unsloth Studio, load the model, or turn on Model auto-switch (Settings > API) so it loads the one picked here.'
+        : /\b499\b|cancel/i.test(er) ? 'The server cancelled the request (it may have been loading or switching the model). Send it again.'
         : (er || 'Something went wrong.');
     }
     bx.appendChild(body);

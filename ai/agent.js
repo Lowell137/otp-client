@@ -6,31 +6,57 @@ const tools = require('./tools/index.js');
 
 const MAX_STEPS = 8;
 
-function systemPrompt() {
+// Who the user is and what they are doing right now, so "me", "my game", "which
+// one is me" need no tool call and no guessing.
+async function userContext(ctx) {
+  const lines = [];
+  try {
+    const acc = await ctx.call('otp:my-account');
+    if (acc?.name) lines.push(`The user is the League player ${acc.name}#${acc.tag} (server ${String(acc.region || '?').toUpperCase()}). In any scoreboard, screenshot or match data, the row with this name is the user ("me", "ben", "benim").`);
+  } catch {}
+  try {
+    const lob = ctx.getLobby && ctx.getLobby();
+    if (lob && lob.phase) lines.push(`Right now the user is ${lob.phase === 'InGame' ? 'in a game' : 'in champion select'}${lob.me?.champ ? ` on ${lob.me.champ}` : ''}${lob.me?.role ? ` (${lob.me.role})` : ''}.`);
+    else lines.push('Right now the user is not in a game or champion select. Questions about "this game / bu maç" usually mean their last finished game: use last_game.');
+  } catch {}
+  return lines.join('\n');
+}
+
+function systemPrompt(who) {
   const now = new Date().toISOString().slice(0, 10);
   return [
     'You are the assistant inside OTP Client, a League of Legends companion app built around onetricks.gg.',
     `Today is ${now}.`,
+    who,
     `Reply in the same language as the user's last message: a Turkish message (e.g. "naber", "hangi", "ne") gets a Turkish answer, English gets English. Be short and concrete: a few lines or a small list, no filler.`,
     'Greetings and small talk ("hi", "naber", "nasılsın", "thanks") are not questions about the game: reply warmly in one line with NO tool call and NO "could not find". Example: user "naber" -> "İyiyim, sen nasılsın? LoL hakkında ne sormak istersin?"',
+    '',
     'STRICT RULES for facts about League of Legends:',
     '1. Inventing is forbidden. Never state a rank, stat, tier, win rate, build, champion role, patch change or item from memory. Your own knowledge is old; the game changes every patch.',
-    '2. Always use the newest data: get it from the tools every time, even if you think you know. Pick the tool that fits: suggest_pick to recommend a champion to play, tier_list for what is strong, recommend_items for boots/defensive items, current_game for who is in my game, player_profile / player_matches for one player.',
+    '2. Always use the newest data from the tools, every time, even if you think you know.',
+    '3. If no stats tool covers it, research: patch_notes (official patch notes), lol_wiki (champions, items, runes, modes, "Jinx/Patch history"), read_page (a link). Name the source and patch.',
+    '4. If you still cannot find it, say so plainly. "I could not find that" beats a guess.',
     '5. Call each tool at most once per question with the same input. When you have the data, answer.',
-    'champion_build gives runes, items, spells and skill order for a champion; use it for build/rune questions.',
-    'duo_synergy gives the best teammates for a champion (e.g. which ADC with a Nami support): use it for "X yanına ne alayım" / "who goes with X".',
-    `3. If no stats tool covers the question, research it: patch_notes for what changed in a patch (official notes), lol_wiki for champions, items, runes, modes and a champion's patch history ("Jinx/Patch history"), read_page for a link. Answer from what you found and name the source and patch.`,
-    '4. If you still cannot find it, say plainly that you could not find it. A short honest "I could not find that" is always better than a guess.',
-    'Only call current_game, player_profile or player_matches when the user asks about a specific game or player. If a tool returns an error, tell the user plainly what is missing.',
-    'When the user names an enemy or ally by champion ("the enemy Ezreal"), pass that champion to the tool instead of asking for a Riot ID.',
-    "Riot's rules: give information, builds and analysis only. Do not make real-time in-game decisions for the player (when to fight, where the enemy jungler is, ability timers).",
-  ].join('\n');
+    '6. Screenshots: read what is in the image. If it is a scoreboard, find the user by name and use last_game for the exact numbers and items.',
+    '',
+    'Which tool:',
+    '- recommend a champion to play: suggest_pick. What is strong / meta: tier_list.',
+    '- runes, items, spells, skill order for a champion: champion_build.',
+    '- best teammate for a champion ("Nami yanına ne alayım"): duo_synergy.',
+    '- boots and defensive items against the enemy team: recommend_items.',
+    '- review of a finished game ("bu maç ne almalıydım", "what went wrong", "son maçım"): last_game. Compare the items with the enemy team and the recommended build, then give 2-4 concrete points.',
+    '- who is in my current game: current_game (only during champion select or a game).',
+    '- a specific player: player_profile, player_matches. An enemy or ally named by champion ("the enemy Ezreal"): pass that champion.',
+    'If a tool returns an error, tell the user plainly what is missing.',
+    "Riot's rules: information, builds and analysis (also after a game) are fine. Do not make real-time in-game decisions for the player (when to fight, where the enemy jungler is, ability timers).",
+  ].filter((l) => l !== undefined).join('\n');
 }
 
 async function run({ history, onEvent, signal, model }) {
   const provider = providers.current();
   const list = tools.all();
-  const messages = [{ role: 'system', content: systemPrompt() }, ...history];
+  const who = await userContext(module.exports.ctx).catch(() => '');
+  const messages = [{ role: 'system', content: systemPrompt(who) }, ...history];
   const thoughts = [];
   const think = (t) => { if (t && t.trim()) thoughts.push(t.trim()); };
   const done = new Map(); // "tool|args" -> result: small models like to repeat the same call
