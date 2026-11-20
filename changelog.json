@@ -1,5 +1,19 @@
 [
   {
+    "version": "0.1.20",
+    "date": "2026-11-20",
+    "items": [
+      [
+        "Game results right away",
+        "The post-game card now shows the moment the game ends, from the end-of-game screen, instead of waiting for the match history."
+      ],
+      [
+        "Readable names",
+        "Recently played with shows full names, with the tag on a second line."
+      ]
+    ]
+  },
+  {
     "version": "0.1.19",
     "date": "2026-11-20",
     "items": [
