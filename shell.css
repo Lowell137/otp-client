@@ -157,3 +157,5 @@ html::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.28); }
 body.otp-plain::before { display: none; }
 body.otp-plain { background: var(--bg) !important; }
 body.otp-plain #otp-shell-header { background: var(--fg); }
+/* Same soft drop shadow under the header bar as onetricks.gg. */
+#otp-shell-header { box-shadow: 0 1px 6px rgba(0, 0, 0, .45); }
