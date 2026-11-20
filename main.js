@@ -492,6 +492,9 @@ function createOverlayWindow() {
   overlayWin.webContents.on('console-message', (_e, _lvl, msg) => console.log('[otp] ov-console:', msg));
   overlayWin.loadFile(path.join(__dirname, 'overlay.html'));
   overlayWin.on('closed', () => { overlayWin = null; });
+  // Typing ends when the overlay loses the keyboard (alt-tab, click into the game
+  // or another app); otherwise it would stay on top outside the game.
+  overlayWin.on('blur', () => { if (overlayTyping) overlayType(false); });
   return overlayWin;
 }
 

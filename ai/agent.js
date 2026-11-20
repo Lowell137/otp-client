@@ -61,9 +61,19 @@ async function run({ history, onEvent, signal, model }) {
   const think = (t) => { if (t && t.trim()) thoughts.push(t.trim()); };
   const done = new Map(); // "tool|args" -> result: small models like to repeat the same call
   const m = model || providers.currentModel();
+  const lastUser = [...history].reverse().find((x) => x.role === 'user')?.content || '';
   for (let step = 0; step < MAX_STEPS; step++) {
     const r = await provider.chat({ messages, tools: list, model: m, signal });
     think(r.thinking);
+    // A game-fact question answered from memory (no tool at all): run the tool
+    // that fits ourselves and make the model answer from its result.
+    if (!r.toolCalls.length && step === 0 && !done.size) {
+      const forced = forcedTool(lastUser);
+      if (forced && tools.byName(forced.name)) {
+        r.toolCalls = [{ id: `forced_${Date.now()}`, name: forced.name, args: forced.args }];
+        r.content = '';
+      }
+    }
     if (!r.toolCalls.length) {
       const content = r.content || '(no answer)';
       onEvent({ type: 'answer', content });
@@ -102,4 +112,17 @@ async function run({ history, onEvent, signal, model }) {
   return { content, thinking: thoughts.join('\n\n'), messages: messages.slice(1) };
 }
 
-module.exports = { run, ctx: null };
+// Questions that must be answered from live data, by words (Turkish and English).
+// Used only when the model called no tool at all.
+const ROLE_WORDS = [['top', /\btop\b/i], ['jungle', /jungle|ormanc|\bjg\b/i], ['mid', /\bmid\b|orta/i], ['bot', /\badc\b|\bbot\b(?!lar)|bot ?lane|nişanc/i], ['support', /support|\bsup\b|destek/i]];
+function forcedTool(q) {
+  const t = String(q || '');
+  const role = (ROLE_WORDS.find(([, re]) => re.test(t)) || [])[0];
+  if (/(\bbot(u|unu|lar|ları|lari)\b|boots|savunma|defansif|defensive|karşı.*(al|item|eşya)|(item|eşya).*karşı|anti.?heal)/i.test(t)) return { name: 'recommend_items', args: {} };
+  if (/(item|eşya|build|rün|rune|starter|başlangıç|ilk .*al|ne al|alay[ıi]m|almal[ıi]|skill|yetenek sıra|spell|büyü)/i.test(t)) return { name: 'champion_build', args: {} };
+  if (/(tier|meta|en güçlü|en iyi|strongest|best|op olan|güçlü)/i.test(t)) return { name: 'tier_list', args: role ? { role } : {} };
+  if (/(patch|yama|nerf|buff)/i.test(t)) return { name: 'patch_notes', args: {} };
+  return null;
+}
+
+module.exports = { run, ctx: null, forcedTool };
