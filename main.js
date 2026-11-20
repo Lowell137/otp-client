@@ -167,9 +167,9 @@ async function getRuneIcon(id) {
 let lastSentChamp = null;
 let lastAutoBuildId = null;
 let champDebounceTimer = null;
-const flags = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, overlay: false, winChance: false, helper: false, flashSlot: 'D' };
+const flags = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, overlay: false, winChance: false, helper: false, assistantOverlay: false, flashSlot: 'D' };
 // The in-game overlay shows when either part is on: spell timers or win chance.
-const overlayWanted = () => !!(flags.overlay || flags.winChance || flags.helper) || process.env.OTP_OVERLAY_DEMO === '1';
+const overlayWanted = () => !!(flags.overlay || flags.winChance || flags.helper || flags.assistantOverlay) || process.env.OTP_OVERLAY_DEMO === '1';
 
 let lobbyWatch = null;
 let postGame = null;
@@ -500,7 +500,7 @@ let overlayBoundsKey = '';
 function showOverlay() {
   const ow = createOverlayWindow();
   const game = process.env.OTP_OVERLAY_ANYWHERE === '1' ? { fallback: true } : leagueProbe()(); // test flag: show over anything
-  if (!game) { if (ow.isVisible()) ow.hide(); return; } // League not in front: hide
+  if (!game) { if (overlayTyping) return; if (ow.isVisible()) ow.hide(); return; } // League not in front: hide (not while typing in the overlay)
   if (!game.fallback) {
     const dip = screen.screenToDipRect(null, game);
     const key = [dip.x, dip.y, dip.width, dip.height].map(Math.round).join(',');
@@ -508,6 +508,32 @@ function showOverlay() {
   }
   ow.setAlwaysOnTop(true, 'screen-saver');
   if (!ow.isVisible()) ow.showInactive();
+}
+
+// Typing in the overlay (assistant chat): the overlay window normally never takes
+// the keyboard; while typing it does, then gives it back to the game.
+let overlayTyping = false;
+function overlayType(on) {
+  const ow = overlayWin;
+  if (!ow || ow.isDestroyed()) return;
+  overlayTyping = !!on;
+  if (on) {
+    ow.setFocusable(true);
+    ow.setIgnoreMouseEvents(false);
+    ow.focus();
+    ow.webContents.send('otp:overlay-focus-chat');
+  } else {
+    ow.setFocusable(false);
+    ow.blur();
+  }
+}
+// Hotkey to start typing, only while in a game with the in-game assistant on.
+const CHAT_KEY = 'CommandOrControl+Shift+Space';
+let chatKeyOn = false;
+function syncChatKey(want) {
+  const { globalShortcut } = require('electron');
+  if (want && !chatKeyOn) { try { chatKeyOn = globalShortcut.register(CHAT_KEY, () => overlayType(true)); } catch {} }
+  else if (!want && chatKeyOn) { try { globalShortcut.unregister(CHAT_KEY); } catch {} chatKeyOn = false; }
 }
 
 function hideOverlay() {
@@ -695,6 +721,7 @@ async function liveTick() {
         console.log(`[otp] liveDBG inGame ov=${!!flags.overlay} win=${overlayWin ? (overlayWin.isDestroyed() ? 'dead' : (overlayWin.isVisible() ? 'visible' : 'hidden')) : 'none'} n=${data.allPlayers.length} enemies=${dbgP.players.length} me=${data.activePlayer?.riotId || data.activePlayer?.summonerName || '?'}`);
       } catch (e) { console.log('[otp] liveDBG payload err: ' + (e?.message || e)); }
     }
+    syncChatKey(!!flags.assistantOverlay && process.env.OTP_NO_OVERLAY !== '1');
     if (process.env.OTP_NO_OVERLAY === '1' || !overlayWanted()) { hideOverlay(); return; } // OTP_NO_OVERLAY: dev runs while a game is open
     showOverlay();
     if (overlayWin && !overlayWin.isDestroyed()) {
@@ -702,6 +729,7 @@ async function liveTick() {
       // Spell timers off: no spells; the enemy rows stay (ranks) only with the helper on.
       if (!flags.overlay && process.env.OTP_OVERLAY_DEMO !== '1') payload.players = flags.helper ? payload.players.map((p) => ({ ...p, spells: [] })) : [];
       payload.win = flags.winChance || process.env.OTP_OVERLAY_DEMO === '1' ? await liveWinChance(data).catch(() => null) : null;
+      payload.chat = flags.assistantOverlay ? { key: 'Ctrl+Shift+Space', mode: data.gameData?.gameMode || '' } : null;
       if (flags.helper || process.env.OTP_OVERLAY_DEMO === '1') {
         payload.helper = await require('./overlay-info.js').helper(data, await ddragonBase()).catch(() => null);
         // Enemy ranks / one-trick mark from the lobby scouting (Porofessor-style).
@@ -717,7 +745,8 @@ async function liveTick() {
       overlayWin.webContents.send('otp:overlay-players', payload);
     }
   } catch {
-    if (liveInGame) { liveInGame = false; hideOverlay(); }
+    if (liveInGame) { liveInGame = false; hideOverlay(); overlayTyping = false; }
+    syncChatKey(false);
   }
 }
 
@@ -757,6 +786,14 @@ function registerOverlayIpc() {
     }
   }, 50);
   ipcMain.on('otp:overlay-dragging', (_e, on) => { overlayDragging = !!on; });
+  ipcMain.on('otp:overlay-type', (_e, on) => overlayType(!!on));
+  // In-game assistant: read the augment choice on screen (augments.js).
+  ipcMain.handle('otp:augment-ask', async () => {
+    try {
+      const all = await liveGet('/liveclientdata/allgamedata');
+      return await require('./augments.js').ask({ all, bounds: overlayWin && !overlayWin.isDestroyed() ? overlayWin.getBounds() : null });
+    } catch (e) { return { ok: false, error: String(e?.message || e) }; }
+  });
 }
 let overlayPanelRects = [];
 let overlayTakesInput = false;

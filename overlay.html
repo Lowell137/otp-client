@@ -91,6 +91,24 @@
   @keyframes ready { 0% { box-shadow: inset 0 0 0 2px var(--ready); } 100% { box-shadow: inset 0 0 0 2px transparent; } }
   .sp .h { position: absolute; left: 1px; top: 0; font-size: 8px; font-weight: 800; color: #9fd6ff; text-shadow: 0 0 3px #000; }
   .hint { padding: 0 8px 6px; font-size: 10px; color: var(--mute); line-height: 1.35; }
+
+  /* In-game assistant */
+  .w[data-w="chat"] { width: 260px; }
+  .msgs { max-height: 200px; overflow-y: auto; padding: 6px 8px 0; display: flex; flex-direction: column; gap: 6px; }
+  .msgs:empty { display: none; }
+  .msgs::-webkit-scrollbar { width: 6px; } .msgs::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 6px; }
+  .m { font-size: 11.5px; line-height: 1.45; word-wrap: break-word; white-space: pre-wrap; }
+  .m.u { align-self: flex-end; background: var(--blue); color: #fff; padding: 4px 8px; border-radius: 9px 9px 2px 9px; max-width: 90%; }
+  .m.b { color: var(--text); }
+  .m.b b { color: #fff; }
+  .m.e { color: #f0707a; }
+  .m.t { color: var(--mute); font-style: italic; }
+  .cin { display: flex; gap: 5px; padding: 6px 8px 8px; }
+  .cin input { flex: 1; min-width: 0; background: rgba(0,0,0,.35); border: 1px solid var(--border); border-radius: 7px; color: var(--text); font: inherit; font-size: 11.5px; padding: 5px 8px; outline: 0; }
+  .cin input:focus { border-color: var(--blue); }
+  .aug { margin: 0 8px 8px; width: calc(100% - 16px); border: 0; border-radius: 7px; background: rgba(245, 166, 35, .18); color: #f5c06a; font: inherit; font-size: 11px; font-weight: 700; padding: 6px 8px; cursor: pointer; }
+  .aug:hover { background: rgba(245, 166, 35, .3); }
+  .aug[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -106,6 +124,12 @@
     <div class="wh"><span class="t" id="laneT">LANE</span><button class="min" title="Collapse">–</button></div>
     <div class="wb stats" id="lane"></div>
   </div>
+  <div class="w hidden" data-w="chat">
+    <div class="wh"><span class="t">ASSISTANT</span><span class="x" id="chatKey" style="font-size:9.5px;color:var(--mute);font-weight:600"></span><button class="min" title="Collapse">–</button></div>
+    <div class="wb"><div class="msgs" id="msgs"></div>
+      <div class="cin"><input id="cq" placeholder="Ask… (Enter to send, Esc to go back)" spellcheck="false" autocomplete="off"></div>
+      <button class="aug" id="augBtn" hidden title="Reads the augment choice on your screen">Ask about these augments</button></div>
+  </div>
   <div class="w hidden" data-w="spells">
     <div class="wh"><span class="t" id="spellsT">ENEMY SPELLS</span><span class="x" id="clock">0:00</span><button class="min" title="Collapse">–</button></div>
     <div class="wb"><div class="rows" id="rows"></div><div class="hint" id="hint">Click = used · Right-click = reset</div></div>
@@ -115,7 +139,7 @@
   const API = window.otpOverlayAPI;
   if (!API) return;
   const W = Object.fromEntries([...document.querySelectorAll('.w')].map((el) => [el.dataset.w, el]));
-  const ORDER = ['win', 'build', 'lane', 'spells'];
+  const ORDER = ['win', 'build', 'lane', 'chat', 'spells'];
   const rows = document.getElementById('rows');
   const clock = document.getElementById('clock');
   const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
@@ -295,6 +319,13 @@
     show('build', !!help); if (help) paintBuild(help);
     show('lane', !!help); if (help) paintLane(help);
     show('spells', players.length > 0); if (players.length) paintSpells(players);
+    const chat = payload && payload.chat;
+    show('chat', !!chat);
+    if (chat) {
+      document.getElementById('chatKey').textContent = chat.key || '';
+      // Augment picks: ARAM Mayhem / ARAM and Arena (CHERRY).
+      document.getElementById('augBtn').hidden = !/ARAM|CHERRY|KIWI|MAYHEM/i.test(chat.mode || '');
+    }
     stack();
     paint();
   }
@@ -327,6 +358,58 @@
     }
     reportShape();
   });
+
+  // ---- In-game assistant chat ----
+  const msgs = document.getElementById('msgs');
+  const cq = document.getElementById('cq');
+  const chatHist = [];
+  let busy = false;
+  const addM = (cls, text) => {
+    const d = document.createElement('div');
+    d.className = 'm ' + cls;
+    if (cls === 'b') d.innerHTML = esc(text).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>'); else d.textContent = text;
+    msgs.appendChild(d);
+    while (msgs.children.length > 12) msgs.firstChild.remove();
+    msgs.scrollTop = msgs.scrollHeight;
+    return d;
+  };
+  const LABEL = { current_game: 'Checking the game', champion_build: 'Getting the build', recommend_items: 'Checking their team', player_profile: 'Looking up the player', tier_list: 'Reading the tier list', patch_notes: 'Reading patch notes', lol_wiki: 'Searching the wiki', suggest_pick: 'Finding picks', last_game: 'Loading the game', duo_synergy: 'Checking duo synergy', player_matches: 'Reading matches' };
+  let curId = null, stepEl = null;
+  API.onAiEvent((ev) => { if (ev.id === curId && ev.type === 'tool' && stepEl) stepEl.textContent = (LABEL[ev.name] || ev.name) + '…'; });
+  async function ask(text) {
+    if (busy || !text.trim()) return;
+    busy = true;
+    addM('u', text);
+    chatHist.push({ role: 'user', content: text });
+    curId = 'ov' + Date.now();
+    stepEl = addM('t', 'Thinking…');
+    const r = await API.chat({ id: curId, history: chatHist.slice(-10) }).catch((e) => ({ ok: false, error: String(e) }));
+    stepEl.remove(); stepEl = null;
+    if (r && r.ok) { addM('b', r.content); chatHist.push({ role: 'assistant', content: r.content }); }
+    else addM('e', (r && r.error) || 'No answer.');
+    busy = false;
+  }
+  // Typing takes the keyboard from the game; Enter or Esc gives it back.
+  cq.addEventListener('mousedown', () => API.type(true));
+  cq.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); const t = cq.value; cq.value = ''; API.type(false); cq.blur(); ask(t); }
+    else if (e.key === 'Escape') { e.preventDefault(); API.type(false); cq.blur(); }
+  });
+  API.onFocusChat(() => {
+    const w = W.chat;
+    if (w.classList.contains('min')) { w.classList.remove('min'); save(); }
+    setTimeout(() => cq.focus(), 30);
+  });
+  document.getElementById('augBtn').onclick = async () => {
+    if (busy) return;
+    busy = true;
+    const t = addM('t', 'Reading the augments on your screen…');
+    const r = await API.augments().catch((e) => ({ ok: false, error: String(e) }));
+    t.remove();
+    if (r && r.ok) { addM('b', r.text); chatHist.push({ role: 'assistant', content: r.text }); }
+    else addM('e', (r && r.error) || 'Could not read the augments.');
+    busy = false;
+  };
 
   API.onPlayersUpdate(render);
 })();
