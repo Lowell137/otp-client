@@ -884,6 +884,7 @@ function mountUI() {
   injectTierNav();
   checkPendingAutoImport();
   renderLobbyPanel();
+  renderPostGame();
   mountSearchPanel();
   if (otpPro === null) checkPro(); else applyPro();
   maybeAutoMatchup();
@@ -897,7 +898,7 @@ document.addEventListener('click', (e) => {
   if (!target) return;
 
   // Ignore clicks inside our own header bar, floating settings, or popover
-  if (target.closest('#otp-header-actions') || target.closest('#otp-float-settings') || target.closest('.otp-popover') || target.closest('#otp-lobby') || target.closest('#otp-msearch')) return;
+  if (target.closest('#otp-header-actions') || target.closest('#otp-float-settings') || target.closest('.otp-popover') || target.closest('#otp-lobby') || target.closest('#otp-msearch') || target.closest('#otp-postgame')) return;
 
   if (!location.pathname.includes('/champions/builds/')) return;
 
@@ -1305,7 +1306,7 @@ function onLobbyClick(e) {
     lobbyGo(lobbyBuildUrl(p));
   }
 }
-ipcRenderer.on('otp:lobby-state', (_e, s) => { lobbyState = s; renderLobbyPanel(); maybeAutoMatchup(); renderChampChip(); });
+ipcRenderer.on('otp:lobby-state', (_e, s) => { lobbyState = s; renderLobbyPanel(); renderPostGame(); maybeAutoMatchup(); renderChampChip(); });
 
 // In game, open my champion's build vs my lane opponent once per game (setting
 // "Auto Matchup"). Only on my own champion's page; "All matchups" afterwards
@@ -1860,6 +1861,152 @@ function renderChampChip() {
 }
 window.addEventListener('popstate', () => setTimeout(refreshNavState, 50));
 
+// ---- Post-game card (build pages): how the last game went vs the OTP build ----
+// Card from main (postgame.js): 'otp:postgame' / 'otp:postgame-get'. Shown at the top
+// of build pages while no champion select / game is on (the lobby panel takes that
+// place then). The OTP side is computed from the site's own recent one-trick games
+// for that champion, lane and (if known) lane opponent.
+let pgCard = null;
+const pgOtp = new Map(); // key -> Promise<{ core, items, n, wr, itemData }>
+const PG_CSS = `
+#otp-postgame{background:var(--fg,#212324);border:1px solid var(--border-light,#2c2f31);border-radius:10px;padding:14px 16px;margin:0 0 16px;color:var(--text,#e8e6e3);font-size:13px;box-sizing:border-box;border-left:4px solid #e0605a}
+#otp-postgame.win{border-left-color:#4f9be8}
+#otp-postgame .pg-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+#otp-postgame .pg-res{font-weight:800;font-size:16px;color:#e0605a}
+#otp-postgame.win .pg-res{color:#4f9be8}
+#otp-postgame .pg-sub{color:var(--lightText,#c2baaf);font-size:12px}
+#otp-postgame .pg-lp{margin-left:auto;font-weight:800;font-size:15px;padding:3px 10px;border-radius:8px;background:var(--fg-raised,#2c2e2f)}
+#otp-postgame .pg-lp.up{color:#2fb96b}
+#otp-postgame .pg-lp.down{color:#e0605a}
+#otp-postgame .pg-rank{color:var(--lightText,#c2baaf);font-size:12px}
+#otp-postgame .pg-x{background:transparent;border:0;color:var(--lightText,#c2baaf);cursor:pointer;font-size:18px;line-height:1;padding:2px 6px;border-radius:6px}
+#otp-postgame .pg-x:hover{background:var(--fg-raised,#2c2e2f);color:var(--text,#e8e6e3)}
+#otp-postgame .pg-main{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+#otp-postgame .pg-champ{position:relative;flex:none}
+#otp-postgame .pg-champ img{width:52px;height:52px;border-radius:10px;display:block}
+#otp-postgame .pg-champ span{position:absolute;right:-6px;bottom:-6px;background:var(--bg,#181a1b);border:1px solid var(--border-light,#2c2f31);border-radius:6px;font-size:11px;font-weight:700;padding:0 4px}
+#otp-postgame .pg-stat .v{font-size:17px;font-weight:800}
+#otp-postgame .pg-stat .k{color:var(--lightText,#c2baaf);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+#otp-postgame .pg-vs{display:flex;align-items:center;gap:7px;color:var(--lightText,#c2baaf)}
+#otp-postgame .pg-vs img{width:26px;height:26px;border-radius:6px}
+#otp-postgame .pg-rows{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--border-light,#2c2f31)}
+#otp-postgame .pg-lab{color:var(--lightText,#c2baaf);font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;white-space:nowrap}
+#otp-postgame .pg-items{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+#otp-postgame .pg-it{position:relative;width:32px;height:32px;border-radius:7px;background:#111;display:block;box-sizing:border-box}
+#otp-postgame .pg-it.empty{border:1px dashed var(--border,#656e73);background:transparent}
+#otp-postgame .pg-it.ok{outline:2px solid #2fb96b;outline-offset:1px}
+#otp-postgame .pg-it.miss{opacity:.45;outline:2px dashed #e0605a;outline-offset:1px}
+#otp-postgame .pg-arr{color:var(--lightText,#c2baaf);font-size:12px;margin:0 2px}
+#otp-postgame .pg-note{color:var(--lightText,#c2baaf);font-size:12px;margin-left:8px}
+#otp-postgame .pg-note b{color:var(--text,#e8e6e3)}
+`;
+function pgAgo(ts) {
+  const m = Math.max(0, Math.round((Date.now() - ts) / 60000));
+  if (m < 1) return 'just now';
+  if (m < 60) return m + ' min ago';
+  const h = Math.round(m / 60);
+  return h + (h === 1 ? ' hour ago' : ' hours ago');
+}
+function pgOtpFor(card) {
+  const key = `${card.champ}|${card.role}|${card.opp}`;
+  if (!pgOtp.has(key)) {
+    pgOtp.set(key, (async () => {
+      const base = `/champions/builds/${encodeURIComponent(card.champ)}`;
+      const q = (mu) => { const p = new URLSearchParams(); if (card.role) p.set('role', card.role); if (mu) p.set('matchup', mu); const s = p.toString(); return base + (s ? '?' + s : ''); };
+      const pps = (await Promise.all([q(card.opp), q('')].filter((u, i, a) => a.indexOf(u) === i).map(msFetchPP))).filter(Boolean);
+      const itemData = (pps.find((p) => p.itemData) || {}).itemData || {};
+      const isCore = (id) => { const it = itemData[id]; return !!it && !MS_BOOTS.has(Number(id)) && (it.gold || 0) >= 2200; };
+      // Prefer the matchup games when there are enough of them.
+      const vs = pps.length > 1 && card.opp ? (pps[0].matchHistory || []) : [];
+      const games = vs.length >= 8 ? vs : pps.flatMap((p) => p.matchHistory || []);
+      const seen = new Set();
+      const uniq = games.filter((g) => g && g.regChampGameId && !seen.has(g.regChampGameId) && seen.add(g.regChampGameId));
+      const coreCount = new Map(); const itemCount = new Map();
+      for (const g of uniq) {
+        const ord = ((g.timeline && g.timeline.orderedItems) || []).filter(isCore);
+        if (ord.length >= 3) { const k = ord.slice(0, 3).join('|'); coreCount.set(k, (coreCount.get(k) || 0) + 1); }
+        for (const id of new Set(ord)) itemCount.set(id, (itemCount.get(id) || 0) + 1);
+      }
+      const core = [...coreCount.entries()].sort((a, b) => b[1] - a[1])[0];
+      return {
+        core: core ? core[0].split('|').map(Number) : [],
+        coreN: core ? core[1] : 0,
+        items: [...itemCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([id, n]) => ({ id: Number(id), share: Math.round((n / Math.max(1, uniq.length)) * 100) })),
+        n: uniq.length, vsOnly: games === vs, isCore, itemData,
+      };
+    })().catch(() => null));
+  }
+  return pgOtp.get(key);
+}
+
+async function renderPostGame() {
+  const isBuild = location.pathname.includes('/champions/builds/');
+  let panel = document.getElementById('otp-postgame');
+  const c = pgCard;
+  const live = lobbyState && (lobbyState.allies?.length || lobbyState.enemies?.length);
+  if (!isBuild || !c || live) { panel?.remove(); return; }
+  if (!document.getElementById('otp-postgame-css')) {
+    const s = document.createElement('style');
+    s.id = 'otp-postgame-css'; s.textContent = PG_CSS;
+    document.head.appendChild(s);
+  }
+  const h1 = document.querySelector('h1');
+  if (!h1) return;
+  let card = h1;
+  while (card.parentElement && card.parentElement !== document.body) {
+    if (parseFloat(getComputedStyle(card).borderTopLeftRadius) >= 6 && card.getBoundingClientRect().width > 500) break;
+    card = card.parentElement;
+  }
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'otp-postgame';
+    panel.addEventListener('click', (e) => {
+      if (e.target.closest('.pg-x')) { e.preventDefault(); e.stopPropagation(); try { ipcRenderer.send('otp:postgame-dismiss', pgCard && pgCard.gameId); } catch {} pgCard = null; panel.remove(); }
+    });
+  }
+  if (panel.nextElementSibling !== card) card.before(panel);
+  panel.classList.toggle('win', !!c.win);
+  const ic = (id, cls = '') => (id ? `<img class="pg-it ${cls}" src="${msItemIcon(id)}" alt="">` : '<span class="pg-it empty"></span>');
+  const min = Math.max(1, c.dur / 60);
+  const kda = ((c.k + c.a) / Math.max(1, c.d)).toFixed(2);
+  const lp = c.lp && c.lp.delta != null ? `<span class="pg-lp ${c.lp.delta >= 0 ? 'up' : 'down'}">${c.lp.delta >= 0 ? '+' : ''}${c.lp.delta} LP</span>` : '';
+  const rank = c.lp ? `<span class="pg-rank">${c.lp.tier.charAt(0) + c.lp.tier.slice(1).toLowerCase()}${/MASTER|GRANDMASTER|CHALLENGER/.test(c.lp.tier) ? '' : ' ' + (DIV_NUM[c.lp.division] || c.lp.division)} · ${c.lp.lp} LP</span>` : '';
+  const mine = c.items.slice(0, 6);
+  const head = `<div class="pg-head">
+      <span class="pg-res">${c.win ? 'Victory' : 'Defeat'}</span>
+      <span class="pg-sub">${lobbyEsc(c.queue)} · ${Math.floor(c.dur / 60)}:${String(c.dur % 60).padStart(2, '0')} · ${pgAgo(c.ts)}</span>
+      ${lp}${rank}
+      <button class="pg-x" title="Hide this card">×</button>
+    </div>
+    <div class="pg-main">
+      <div class="pg-champ"><img src="${lobbyIcon(c.champ)}" alt=""><span>${c.level}</span></div>
+      <div class="pg-stat"><div class="v">${c.k} / ${c.d} / ${c.a}</div><div class="k">${kda} KDA</div></div>
+      <div class="pg-stat"><div class="v">${c.cs}</div><div class="k">CS · ${(c.cs / min).toFixed(1)}/min</div></div>
+      <div class="pg-stat"><div class="v">${(c.dmg / 1000).toFixed(1)}k</div><div class="k">Damage</div></div>
+      <div class="pg-stat"><div class="v">${(c.gold / 1000).toFixed(1)}k</div><div class="k">Gold</div></div>
+      ${c.vision ? `<div class="pg-stat"><div class="v">${c.vision}</div><div class="k">Vision</div></div>` : ''}
+      ${c.opp ? `<div class="pg-vs">vs <img src="${lobbyIcon(c.opp)}" alt="">${lobbyEsc(c.opp)}</div>` : ''}
+    </div>`;
+  const yours = `<span class="pg-lab">Your items</span><div class="pg-items">${mine.map((id) => ic(id)).join('')}${ic(c.items[6])}</div>`;
+  panel.innerHTML = `${head}<div class="pg-rows">${yours}<span class="pg-lab">OTP core</span><div class="pg-items"><span class="pg-note">Loading one-trick games…</span></div></div>`;
+  const otp = await pgOtpFor(c);
+  if (!document.body.contains(panel) || pgCard !== c) return;
+  let row;
+  if (!otp || !otp.core.length) {
+    row = '<span class="pg-note">Not enough one-trick games for this champion yet.</span>';
+  } else {
+    const have = new Set(mine.filter(Boolean));
+    const hit = otp.core.filter((id) => have.has(id)).length;
+    const skipped = otp.items.filter((x) => !have.has(x.id) && x.share >= 30).slice(0, 2);
+    row = otp.core.map((id, i) => (i ? '<span class="pg-arr">›</span>' : '') + ic(id, have.has(id) ? 'ok' : 'miss')).join('')
+      + `<span class="pg-note">You built <b>${hit}/${otp.core.length}</b> of the most common one-trick core${c.opp && otp.vsOnly ? ' vs ' + lobbyEsc(c.opp) : ''} (${otp.coreN} of ${otp.n} games).`
+      + (skipped.length ? ` Often built, you skipped: ${skipped.map((x) => `<b>${lobbyEsc((otp.itemData[x.id] && otp.itemData[x.id].name) || 'item ' + x.id)}</b> (${x.share}%)`).join(', ')}.` : '') + '</span>';
+  }
+  panel.querySelector('.pg-rows').innerHTML = `${yours}<span class="pg-lab">OTP core</span><div class="pg-items">${row}</div>`;
+}
+ipcRenderer.on('otp:postgame', (_e, c) => { pgCard = c; renderPostGame(); });
+ipcRenderer.invoke('otp:postgame-get').then((c) => { if (c) { pgCard = c; renderPostGame(); } }).catch(() => {});
+
 // ---- Lifecycle & Observers ----
 // contextBridge must be called synchronously at top-level
 contextBridge.exposeInMainWorld('otp', { parseBuild, doImport });
@@ -1914,10 +2061,11 @@ window.addEventListener('DOMContentLoaded', () => {
     const needsLobby = isBuild && !!lobbyState && !document.getElementById("otp-lobby");
     const msEl = document.getElementById("otp-msearch");
     const msCard = isBuild && siteFilterCard();
+    const needsPg = isBuild && !!pgCard && !(lobbyState && (lobbyState.allies?.length || lobbyState.enemies?.length)) && !document.getElementById("otp-postgame");
     const needsNav = !!document.querySelector("header") && !document.getElementById("otp-sitenav");
     const needsSearch = isBuild && (!msEl || (msCard && (msCard.nextElementSibling !== msEl || !document.getElementById("otp-ms-toggle"))));
     if (otpPro !== true && !window._otpProRaf) window._otpProRaf = requestAnimationFrame(() => { window._otpProRaf = 0; applyPro(); });
-    if (needsHeader || needsFloat || needsTier || needsLobby || needsSearch || needsNav) requestMountUI(80);
+    if (needsHeader || needsFloat || needsTier || needsLobby || needsSearch || needsNav || needsPg) requestMountUI(80);
 
     // Also remove Get Pro button if it reappears
     const getProBtn = document.querySelector('a.get-pro-btn, .get-pro-btn');
