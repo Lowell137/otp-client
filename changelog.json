@@ -1,5 +1,23 @@
 [
   {
+    "version": "0.1.21",
+    "date": "2026-11-20",
+    "items": [
+      [
+        "Bigger match history",
+        "Match rows now show your lane on the champion icon, items, your AI-Score place and both teams; the opened scoreboard lists everyone with spells, runes and rank."
+      ],
+      [
+        "Sidebar refresh",
+        "Champion stats get Total / Ranked Solo / Ranked Flex tabs, and Recently Played With shows everyone from your recent games."
+      ],
+      [
+        "onetricks look",
+        "Matches use the onetricks colors with a win or loss strip on the right."
+      ]
+    ]
+  },
+  {
     "version": "0.1.20",
     "date": "2026-11-20",
     "items": [
