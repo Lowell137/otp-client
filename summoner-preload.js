@@ -1224,3 +1224,8 @@ function paintPlayedWith() {
   box.querySelectorAll('[data-pw]').forEach((b) => { b.onclick = () => { pwTab = b.dataset.pw; paintPlayedWith(); }; });
   box.querySelectorAll('.otp-plink').forEach((el) => { el.onclick = (e) => { e.stopPropagation(); openPlayerProfile(el.dataset.name, el.dataset.tag); }; });
 }
+
+// Post-game toast in the shell (shell.js): last game card in, build path out via otp-go-build.
+const fwdPg = (c) => { try { window.dispatchEvent(new CustomEvent('otp-postgame-card', { detail: JSON.stringify(c || null) })); } catch {} };
+ipcRenderer.on('otp:postgame', (_e, c) => fwdPg(c));
+window.addEventListener('DOMContentLoaded', () => { ipcRenderer.invoke('otp:postgame-get').then(fwdPg).catch(() => {}); });

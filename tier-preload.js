@@ -412,3 +412,8 @@ const fwdLobby = (st) => { try { window.dispatchEvent(new CustomEvent('otp-lobby
 ipcRenderer.on('otp:lobby-state', (_e, st) => fwdLobby(st));
 window.addEventListener('DOMContentLoaded', () => { ipcRenderer.invoke('otp:lobby-get').then(fwdLobby).catch(() => {}); });
 window.addEventListener('otp-go-build', (e) => ipcRenderer.send('otp:go-build', String(e.detail || '')));
+
+// Post-game toast in the shell (shell.js): last game card in, build path out via otp-go-build.
+const fwdPg = (c) => { try { window.dispatchEvent(new CustomEvent('otp-postgame-card', { detail: JSON.stringify(c || null) })); } catch {} };
+ipcRenderer.on('otp:postgame', (_e, c) => fwdPg(c));
+window.addEventListener('DOMContentLoaded', () => { ipcRenderer.invoke('otp:postgame-get').then(fwdPg).catch(() => {}); });

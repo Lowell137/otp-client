@@ -885,6 +885,7 @@ function mountUI() {
   checkPendingAutoImport();
   renderLobbyPanel();
   renderPostGame();
+  renderPgToast();
   mountSearchPanel();
   renderModes();
   if (otpPro === null) checkPro(); else applyPro();
@@ -2069,8 +2070,8 @@ async function renderPostGame() {
   }
   panel.querySelector('.pg-rows').innerHTML = `${yours}<span class="pg-lab">OTP core</span><div class="pg-items">${row}</div>`;
 }
-ipcRenderer.on('otp:postgame', (_e, c) => { pgCard = c; renderPostGame(); });
-ipcRenderer.invoke('otp:postgame-get').then((c) => { if (c) { pgCard = c; renderPostGame(); } }).catch(() => {});
+ipcRenderer.on('otp:postgame', (_e, c) => { pgCard = c; Promise.resolve(renderPostGame()).finally(renderPgToast); });
+ipcRenderer.invoke('otp:postgame-get').then((c) => { if (c) { pgCard = c; Promise.resolve(renderPostGame()).finally(renderPgToast); } }).catch(() => {});
 
 // ---- ARAM Mayhem / Arena (build pages): op.gg build + augments for this champion ----
 // Two extra tabs next to the site's "ARAM" tab. The panel opens under the filter
@@ -2187,6 +2188,58 @@ async function renderModes() {
   panel.innerHTML = `<div class="md-head"><span class="md-title">${lobbyEsc(champ)} · ${title}</span><span class="md-src">op.gg · ${modeOpen === 'arena' ? 'tiers from win rate and games on this champion' : 'tiers for this champion'}</span><button class="md-x" title="Close">×</button></div>
     ${buildHtml}
     <div class="md-sec"><h5>Augments for ${lobbyEsc(champ)}<span class="md-filters">${rarities.map(([v, l]) => `<button data-rf="${v}" class="${modeFilter === v ? 'on' : ''}">${l}</button>`).join('')}</span></h5>${augHtml || '<div class="md-empty">No augment data.</div>'}</div>`;
+}
+
+// ---- Post-game toast: visible on any page right after a game ----
+// The full card only lives at the top of build pages (and gives way to the lobby
+// panel in the next champion select), so a game could end without you ever seeing
+// it. This small card shows wherever you are until closed or opened.
+function pgToastSeen(id) { try { return sessionStorage.getItem('otp.pgToast') === String(id) || localStorage.getItem('otp.pgToastSeen') === String(id); } catch { return false; } }
+function pgToastMark(id) { try { localStorage.setItem('otp.pgToastSeen', String(id)); } catch {} }
+function renderPgToast() {
+  let t = document.getElementById('otp-pgtoast');
+  const c = pgCard;
+  const onFullCard = !!document.getElementById('otp-postgame');
+  if (c && onFullCard) pgToastMark(c.gameId); // seen in full on the build page
+  if (!c || onFullCard || pgToastSeen(c.gameId)) { t?.remove(); return; }
+  if (!document.getElementById('otp-pgtoast-css')) {
+    const s = document.createElement('style');
+    s.id = 'otp-pgtoast-css';
+    s.textContent = `#otp-pgtoast{position:fixed;left:16px;bottom:16px;z-index:2147483000;display:flex;align-items:center;gap:12px;background:#212324;border:1px solid #2c2f31;border-left:4px solid #e0605a;border-radius:10px;padding:10px 12px;color:#e8e6e3;font:13px -apple-system,"Segoe UI",Roboto,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+#otp-pgtoast.win{border-left-color:#4f9be8}
+#otp-pgtoast img{width:42px;height:42px;border-radius:9px}
+#otp-pgtoast .r{font-weight:800;font-size:14px;color:#e0605a}
+#otp-pgtoast.win .r{color:#4f9be8}
+#otp-pgtoast .s{color:#c2baaf;font-size:12px;margin-top:2px}
+#otp-pgtoast .lp{font-weight:800;margin-left:6px}
+#otp-pgtoast .lp.up{color:#2fb96b}
+#otp-pgtoast .lp.down{color:#e0605a}
+#otp-pgtoast button{background:#1063b7;border:0;color:#fff;border-radius:8px;padding:7px 12px;font:inherit;font-weight:700;cursor:pointer}
+#otp-pgtoast .x{background:transparent;color:#8f96a3;padding:4px 6px;font-size:16px}
+#otp-pgtoast .x:hover{color:#fff}`;
+    document.head.appendChild(s);
+  }
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'otp-pgtoast';
+    document.body.appendChild(t);
+    t.addEventListener('click', (e) => {
+      const card = pgCard;
+      if (!card) return;
+      if (e.target.closest('.x')) { pgToastMark(card.gameId); t.remove(); return; }
+      if (e.target.closest('.go')) {
+        pgToastMark(card.gameId);
+        t.remove();
+        const q = new URLSearchParams();
+        if (card.opp) q.set('matchup', card.opp);
+        if (card.role) q.set('role', card.role);
+        lobbyGo(`/champions/builds/${encodeURIComponent(card.champ)}${q.toString() ? '?' + q : ''}`);
+      }
+    });
+  }
+  t.classList.toggle('win', !!c.win);
+  const lp = c.lp && c.lp.delta != null ? `<span class="lp ${c.lp.delta >= 0 ? 'up' : 'down'}">${c.lp.delta >= 0 ? '+' : ''}${c.lp.delta} LP</span>` : '';
+  t.innerHTML = `<img src="${lobbyIcon(c.champ)}" alt=""><div><div class="r">${c.win ? 'Victory' : 'Defeat'}${lp}</div><div class="s">${lobbyEsc(c.champ)} · ${c.k}/${c.d}/${c.a} · ${lobbyEsc(c.queue)}</div></div><button class="go">Details</button><button class="x" title="Close">×</button>`;
 }
 
 // ---- Lifecycle & Observers ----

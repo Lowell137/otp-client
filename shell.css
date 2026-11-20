@@ -159,3 +159,17 @@ body.otp-plain { background: var(--bg) !important; }
 body.otp-plain #otp-shell-header { background: var(--fg); }
 /* Same soft drop shadow under the header bar as onetricks.gg. */
 #otp-shell-header { box-shadow: 0 1px 6px rgba(0, 0, 0, .45); }
+
+/* Post-game toast (shell.js). */
+#otp-pgtoast { position: fixed; left: 16px; bottom: 16px; z-index: 5000; display: flex; align-items: center; gap: 12px; background: #212324; border: 1px solid #2c2f31; border-left: 4px solid #e0605a; border-radius: 10px; padding: 10px 12px; color: #e8e6e3; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+#otp-pgtoast.win { border-left-color: #4f9be8; }
+#otp-pgtoast img { width: 42px; height: 42px; border-radius: 9px; }
+#otp-pgtoast .r { font-weight: 800; font-size: 14px; color: #e0605a; }
+#otp-pgtoast.win .r { color: #4f9be8; }
+#otp-pgtoast .s { color: #c2baaf; font-size: 12px; margin-top: 2px; }
+#otp-pgtoast .lp { font-weight: 800; margin-left: 6px; }
+#otp-pgtoast .lp.up { color: #2fb96b; }
+#otp-pgtoast .lp.down { color: #e0605a; }
+#otp-pgtoast button { background: #1063b7; border: 0; color: #fff; border-radius: 8px; padding: 7px 12px; font: inherit; font-weight: 700; cursor: pointer; }
+#otp-pgtoast .x { background: transparent; color: #8f96a3; padding: 4px 6px; font-size: 16px; }
+#otp-pgtoast .x:hover { color: #fff; }

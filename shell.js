@@ -258,3 +258,37 @@
       : st === 'downloading' ? 'Downloading update v' + (state.version || '') + ': ' + pct + '%' : 'Checking for updates…';
   });
 })();
+
+// Post-game toast (bottom-left): the last game's result right after it ends, on
+// the local pages too. "Details" opens that champion's build (full card there).
+(function () {
+  const seenKey = 'otp.pgToastSeen';
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  window.addEventListener('otp-postgame-card', (e) => {
+    let c = null;
+    try { c = JSON.parse(e.detail || 'null'); } catch {}
+    let t = document.getElementById('otp-pgtoast');
+    let seen = null;
+    try { seen = localStorage.getItem(seenKey); } catch {}
+    if (!c || !c.champ || seen === String(c.gameId)) { t?.remove(); return; }
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'otp-pgtoast';
+      document.body.appendChild(t);
+    }
+    const mark = () => { try { localStorage.setItem(seenKey, String(c.gameId)); } catch {} t.remove(); };
+    let icon = '';
+    try { const list = JSON.parse(localStorage.getItem('otp.shell.champs2') || 'null'); const x = list && list.list.find((k) => k.id === c.champ); icon = x ? x.icon : ''; } catch {}
+    const lp = c.lp && c.lp.delta != null ? `<span class="lp ${c.lp.delta >= 0 ? 'up' : 'down'}">${c.lp.delta >= 0 ? '+' : ''}${c.lp.delta} LP</span>` : '';
+    t.classList.toggle('win', !!c.win);
+    t.innerHTML = `${icon ? `<img src="${icon}" alt="">` : ''}<div><div class="r">${c.win ? 'Victory' : 'Defeat'}${lp}</div><div class="s">${esc(c.champ)} · ${c.k}/${c.d}/${c.a} · ${esc(c.queue)}</div></div><button class="go">Details</button><button class="x" title="Close">×</button>`;
+    t.querySelector('.x').onclick = mark;
+    t.querySelector('.go').onclick = () => {
+      mark();
+      const q = new URLSearchParams();
+      if (c.opp) q.set('matchup', c.opp);
+      if (c.role) q.set('role', c.role);
+      window.dispatchEvent(new CustomEvent('otp-go-build', { detail: `/champions/builds/${c.champ}${q.toString() ? '?' + q : ''}` }));
+    };
+  });
+})();
