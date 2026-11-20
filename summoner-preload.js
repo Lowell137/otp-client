@@ -489,56 +489,75 @@ function timeAgo(ts) {
   return `${String(dt.getDate()).padStart(2, '0')}.${String(dt.getMonth() + 1).padStart(2, '0')}.${dt.getFullYear()}`;
 }
 
+// Match row, laid out like deeplol: meta | champion (lane icon bottom-right,
+// level), spells + runes, KDA, items | AI score and place | both teams.
+const LANE_ICON = { TOP: 'top', JUNGLE: 'jungle', MIDDLE: 'middle', BOTTOM: 'bottom', UTILITY: 'utility' };
+const laneIconUrl = (pos) => (LANE_ICON[pos] ? `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-clash/global/default/assets/images/position-selector/positions/icon-position-${LANE_ICON[pos]}.png` : '');
+// deeplol-style time: "15 minutes ago"
+function longAgo(ts) {
+  const s = Math.max(0, (Date.now() - (ts > 1e12 ? ts : ts * 1000)) / 1000);
+  const u = s < 3600 ? [Math.floor(s / 60), 'minute'] : s < 86400 ? [Math.floor(s / 3600), 'hour'] : [Math.floor(s / 86400), 'day'];
+  if (u[0] < 1) return 'just now';
+  return `${u[0]} ${u[1]}${u[0] === 1 ? '' : 's'} ago`;
+}
 function matchRowHtml(m, mi) {
-  const kRatio = ((m.kills + m.assists) / Math.max(1, m.deaths));
-  const kda = kRatio.toFixed(2);
-
+  const kda = ((m.kills + m.assists) / Math.max(1, m.deaths)).toFixed(2);
   let matchFate = { type: 'balanced', label: 'Balanced' };
   if (typeof m.teamDiff === 'number') {
     if (m.teamDiff >= 8) matchFate = { type: 'godlike', label: 'Godlike' };
     else if (m.teamDiff >= 1.5) matchFate = { type: 'solid', label: 'Solid' };
     else if (m.teamDiff <= -8) matchFate = { type: 'messy', label: 'Messy' };
-    else matchFate = { type: 'balanced', label: 'Balanced' };
   }
-
-  const cloudSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
-
-  const spellsHtml = (m.spells || []).map((s) => `<img src="${s}">`).join('');
-  const runesHtml = (m.runes || []).map((r) => `<img src="${r}">`).join('');
-
+  const cloudSvg = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>';
+  const prof = lastDlRes?.profile || {};
+  const meKey = `${String(prof.name || '').toLowerCase()}#${String(prof.tag || '').toLowerCase()}`;
+  const teams = m.teams || [];
+  const me = teams.find((t) => `${String(t.name).toLowerCase()}#${String(t.tag || '').toLowerCase()}` === meKey);
+  const ranked = [...teams].sort((a, b) => (b.ai ?? -1) - (a.ai ?? -1));
+  const place = me ? ranked.indexOf(me) + 1 : 0;
+  const ord = (n) => (n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`);
+  const pos = normPos(m.position);
+  const lane = laneIconUrl(pos);
+  const items = (me && me.items) || [];
+  const itemsHtml = [0, 1, 2, 3, 4, 5, 6].map((i) => {
+    const it = items[i];
+    return it && it.icon ? `<img class="it${i === 6 ? ' tr' : ''}" loading="lazy" src="${it.icon}" alt="">` : `<span class="it empty${i === 6 ? ' tr' : ''}"></span>`;
+  }).join('');
+  const sideList = (side) => teams.filter((t) => t.side === side).map((t) => {
+    const isMe = t === me;
+    return `<div class="tm${isMe ? ' me' : ''}"><img loading="lazy" src="${t.icon}" alt="" data-build="${esc(t.champ)}" data-pos="${esc(t.position || '')}" title="${esc(t.champ)} build"><span class="${isMe ? '' : 'otp-plink'}" data-name="${esc(t.name)}" data-tag="${esc(t.tag || '')}" title="${esc(t.name)}${t.tag ? ' #' + esc(t.tag) : ''}">${esc(t.name)}</span></div>`;
+  }).join('');
+  const spells = (m.spells || []).map((s) => `<img src="${s}" alt="">`);
+  const runes = (m.runes || []).map((r) => `<img class="rn" src="${r}" alt="">`);
   return `
-    <div class="otp-mrow ${m.win ? 'win' : 'lose'} otp-mexp" data-mi="${mi}" style="cursor:pointer" title="Click for team details">
+    <div class="otp-mrow big ${m.win ? 'win' : 'lose'} otp-mexp" data-mi="${mi}" title="Click for team details">
       <div class="otp-m-meta">
-        <span class="otp-m-queue">${esc(qname(m.queue))}</span>
-        <span class="otp-m-time">${m.ts ? timeAgo(m.ts) : ''}</span>
-        <span class="otp-m-result ${m.win ? 'win' : 'lose'}">${m.win ? 'Win' : 'Lose'}${m.dur ? ` ${Math.floor(m.dur/60)}:${String(m.dur%60).padStart(2,'0')}` : ''}</span>
+        <span class="otp-m-queue ${m.win ? 'win' : 'lose'}">${esc(qname(m.queue))}</span>
+        <span class="otp-m-time">${m.ts ? longAgo(m.ts) : ''}</span>
+        <span class="otp-m-result ${m.win ? 'win' : 'lose'}">${m.win ? 'Win' : 'Lose'}${m.dur ? ` <i>${Math.floor(m.dur / 60)}:${String(m.dur % 60).padStart(2, '0')}</i>` : ''}</span>
+        <span class="otp-m-fate tag-${matchFate.type}">${{ godlike: '☀️', solid: '⛅', balanced: '☁️', messy: '🌧️' }[matchFate.type]} Fate <b>${matchFate.label}</b></span>
       </div>
-
-      <div class="otp-m-champbox">
-        <img class="champ-icon" loading="lazy" src="${m.icon}" title="${esc(m.champ)} build" data-build="${esc(m.champ)}" data-pos="${esc(m.position || '')}">
-        <div class="otp-m-spells-runes">
-          ${spellsHtml}
-          ${runesHtml}
+      <div class="otp-m-main">
+        <div class="otp-m-top">
+          <div class="otp-m-champ">
+            <img class="champ-icon" loading="lazy" src="${m.icon}" title="${esc(m.champ)} build" data-build="${esc(m.champ)}" data-pos="${esc(m.position || '')}">
+            ${lane ? `<img class="lane" src="${lane}" alt="" title="${esc(pos.charAt(0) + pos.slice(1).toLowerCase())}">` : ''}
+          </div>
+          <div class="otp-m-sr"><div>${spells.join('')}</div><div class="rcol">${runes.join('')}</div></div>
+          <div class="otp-m-kda">
+            <div class="otp-m-kda-nums">${m.kills} / <span class="d">${m.deaths}</span> / ${m.assists}</div>
+            <div class="otp-m-kda-ratio">${m.deaths ? kda + ' KDA' : 'Perfect'}</div>
+          </div>
         </div>
+        <div class="otp-m-items">${itemsHtml}</div>
       </div>
-
-      <div class="otp-m-kda">
-        <div class="otp-m-kda-nums">${m.kills} / <span style="color:#ef4444">${m.deaths}</span> / ${m.assists}</div>
-        <div class="otp-m-kda-ratio">${kda} KDA</div>
-      </div>
-
       <div class="otp-m-ai">
+        <span class="lbl">AI-Score</span>
         ${aiBadge(m.ai)}
-        ${m.mvp ? `<span class="otp-m-tag tag-mvp">👑 MVP</span>` : m.ace ? `<span class="otp-m-tag tag-ace">ACE</span>` : ''}
+        ${place ? `<span class="pl">${m.mvp ? '👑 ' : ''}${ord(place)}</span>` : ''}
       </div>
-
-      <div class="otp-m-tagbox">
-        <span class="otp-m-tag tag-${matchFate.type}">${cloudSvg} Fate: ${matchFate.label}</span>
-      </div>
-
-      <div style="font-size:11px;color:#8f96a3;text-align:right;">
-        <span>${m.cs || 0} CS</span>
-      </div>
+      <div class="otp-m-teams"><div>${sideList('BLUE')}</div><div>${sideList('RED')}</div></div>
+      <span class="otp-m-chev"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 4 4 4-4"/></svg></span>
     </div>
     <div id="otp-mexp-${mi}" style="display:none;margin:6px 0 14px 0;"></div>`;
 }
@@ -692,6 +711,9 @@ function paintMatchData() {
     }
     const rb = document.querySelector('#otp-retrybtn');
     if (rb) rb.onclick = () => retryFailedMatches();
+    ml.querySelectorAll('.otp-m-teams .otp-plink').forEach((el) => {
+      el.onclick = (e) => { e.stopPropagation(); openPlayerProfile(el.dataset.name, el.dataset.tag); };
+    });
     ml.querySelectorAll('.otp-mexp').forEach((row) => {
       row.onclick = () => toggleMatchExpand(Number(row.dataset.mi));
     });
@@ -797,6 +819,15 @@ async function retryFailedMatches() {
   paintMatchData();
 }
 
+// "GOLD 2" -> "G2", Master+ -> M / GM / C, none -> ''
+function tierAbbr(t) {
+  const [tier, div] = String(t || '').trim().toUpperCase().split(/\s+/);
+  if (!tier || tier === 'NONE' || tier === 'UNRANKED') return '';
+  if (tier === 'GRANDMASTER') return 'GM';
+  if (tier === 'MASTER' || tier === 'CHALLENGER') return tier[0];
+  const d = { I: 1, II: 2, III: 3, IV: 4 }[div] || (/^\d$/.test(div || '') ? div : '');
+  return tier[0] + d;
+}
 function toggleMatchExpand(mi) {
   const box = document.getElementById('otp-mexp-' + mi);
   const m = lastDlRes?._view?.[mi];
@@ -818,7 +849,7 @@ function toggleMatchExpand(mi) {
     if (!ts.length) return '';
     const won = ts[0].win;
     const isBlue = side === 'BLUE';
-    const ranked = [...ts].sort((a, b) => (b.ai ?? -1) - (a.ai ?? -1));
+    const teamBest = [...ts].sort((a, b) => (b.ai ?? -1) - (a.ai ?? -1))[0];
 
     return `<div class="otp-dl-card ${isBlue ? 'side-blue' : 'side-red'} ${won ? 'win' : 'lose'}">
       <div class="otp-dl-head">
@@ -834,9 +865,10 @@ function toggleMatchExpand(mi) {
           <span class="col-items">Items (Click)</span>
         </div>
       </div>
-      <div class="otp-dl-rows">` + ranked.map((t) => {
-        const rk = ranked.indexOf(t) + 1;
-        const isMvp = t === mvp && t.win;
+      <div class="otp-dl-rows">` + ts.map((t) => {
+        const rk = allSorted.indexOf(t) + 1;
+        const isMvp = t === teamBest && t.ai != null;
+        const isMe = t === me;
         const kRatio = ((t.kills + t.assists) / Math.max(1, t.deaths));
         const kRatioStr = kRatio.toFixed(2);
         const dmgPct = Math.min(100, Math.round((t.dmg / maxDmg) * 100));
@@ -858,25 +890,27 @@ function toggleMatchExpand(mi) {
           itemsHtml += `<span class="otp-dl-item empty trinket"></span>`;
         }
 
-        return `<div class="otp-dl-row">
+        const sp = (t.spells || []).map((x) => `<img src="${x}" alt="">`).join('');
+        const rn = (t.runes || []).map((x) => `<img class="rn" src="${x}" alt="">`).join('');
+        return `<div class="otp-dl-row${isMe ? ' me' : ''}">
           <div class="otp-dl-pcell">
             <div class="otp-dl-iconwrap">
               <img class="champ-img" loading="lazy" src="${t.icon}" title="${esc(t.champ)} build" data-build="${esc(t.champ)}" data-pos="${esc(t.position || '')}">
               ${t.lvl ? `<span class="champ-lvl">${t.lvl}</span>` : ''}
             </div>
-            ${t.tier ? `<span class="otp-dl-tier tier-${String(t.tier).toLowerCase().slice(0, 1)}">${esc(t.tier.slice(0, 2))}</span>` : ''}
+            <div class="otp-dl-sr"><div>${sp}</div><div>${rn}</div></div>
+            <span class="otp-dl-tier tier-${tierAbbr(t.tier).toLowerCase().replace(/\d/g, '') || 'u'}">${tierAbbr(t.tier) || 'U'}</span>
             <div class="otp-dl-namebox">
               <div class="p-name otp-plink" data-name="${esc(t.name)}" data-tag="${esc(t.tag || '')}" title="Open profile">${esc(t.name)} <span class="p-tag">${t.tag ? `#${esc(t.tag)}` : ''}</span></div>
-              <div class="p-champ">${esc(t.champ)}</div>
             </div>
           </div>
           <div class="otp-dl-aicell">
             ${aiBadge(t.ai)}
-            <span class="otp-dl-rank ${isMvp ? 'mvp' : ''}">${isMvp ? '👑 1st' : ord(rk)}</span>
+            <span class="otp-dl-rank ${isMvp ? 'mvp' : ''}">${isMvp ? '<i>👑</i>' : ''}${ord(rk)}</span>
           </div>
           <div class="otp-dl-kdacell">
             <div class="kda-nums">${t.kills} / ${t.deaths} / ${t.assists}</div>
-            <div class="kda-ratio ${kRatio >= 4 ? 'high' : ''}">${kRatioStr}</div>
+            <div class="kda-ratio ${kRatio >= 4 ? 'high' : kRatio >= 3 ? 'mid' : ''}">${kRatioStr}</div>
           </div>
           <div class="otp-dl-dmgcell">
             <div class="dmg-num">${fmt(t.dmg)}</div>
@@ -893,7 +927,7 @@ function toggleMatchExpand(mi) {
       }).join('') + `</div>
     </div>`;
   }).join('');
-  box.innerHTML = matchTabsHtml(m, board);
+  box.innerHTML = matchTabsHtml(m, `<div class="otp-dl-panel">${board}</div>`);
   wireMatchTabs(box);
   wireWinChance(box, m);
   box.style.display = 'block';

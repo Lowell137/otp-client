@@ -1071,6 +1071,100 @@
   .otp-pw-row .who em { font-style: normal; color: #8f96a3; font-weight: 400; }
   .otp-pw-row .up { color: #10b981; font-weight: 700; }
   .otp-pw-row .down { color: #ef4444; font-weight: 700; }
+
+
+  /* Scoreboard, deeplol look: one panel, rows tinted by result */
+  .otp-dl-panel { border: 1px solid #3a3d44; border-radius: 6px; overflow: hidden; margin-bottom: 10px; }
+  .otp-dl-panel .otp-dl-card { border: 0; border-radius: 0; margin: 0; }
+  .otp-dl-panel .otp-dl-card .otp-dl-head { background: #222327 !important; border-bottom: 1px solid #3a3d44 !important; }
+  .otp-dl-panel .otp-dl-card.lose .otp-dl-row { background: #3b2329 !important; border-bottom: 1px solid #55303a !important; }
+  .otp-dl-panel .otp-dl-card.lose .otp-dl-row.me { background: #5a2f39 !important; }
+  .otp-dl-panel .otp-dl-card.win .otp-dl-row { background: #24314f !important; border-bottom: 1px solid #34466e !important; }
+  .otp-dl-panel .otp-dl-card.win .otp-dl-row.me { background: #31436b !important; }
+  .otp-dl-panel .otp-dl-card .otp-dl-row:hover { filter: brightness(1.08); }
+  .otp-dl-panel .otp-dl-card.lose .dmg-bar-fill, .otp-dl-panel .otp-dl-card.win .dmg-bar-fill { background: #c2185b !important; }
+  .otp-dl-panel .otp-dl-card + .otp-dl-card .otp-dl-head { border-top: 1px solid #3a3d44; }
+  .otp-dl-panel .otp-dl-iconwrap, .otp-dl-panel .otp-dl-iconwrap .champ-img { width: 36px; height: 36px; }
+  .otp-dl-panel .otp-dl-iconwrap .champ-img { cursor: pointer; }
+  .otp-dl-sr { display: flex; gap: 2px; flex: none; }
+  .otp-dl-sr div { display: flex; flex-direction: column; gap: 2px; }
+  .otp-dl-sr img { width: 17px; height: 17px; border-radius: 3px; background: #111; display: block; }
+  .otp-dl-sr img.rn { border-radius: 50%; background: #0f0f12; }
+  .otp-dl-sr img.rn + img.rn { padding: 2px; box-sizing: border-box; }
+  .otp-dl-panel .otp-dl-tier { font-size: 10.5px; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: #3a3d44; color: #c9c3bc; min-width: 12px; text-align: center; }
+  .otp-dl-panel .otp-dl-tier.tier-g { background: #5a4518; color: #f0c75e; }
+  .otp-dl-panel .otp-dl-tier.tier-e { background: #164a32; color: #4fd18b; }
+  .otp-dl-panel .otp-dl-tier.tier-p { background: #18474a; color: #5fd0c4; }
+  .otp-dl-panel .otp-dl-tier.tier-d { background: #253a6b; color: #8fb0ff; }
+  .otp-dl-panel .otp-dl-tier.tier-s { background: #3c454c; color: #c5d2db; }
+  .otp-dl-panel .otp-dl-tier.tier-b { background: #4a3127; color: #d9a48f; }
+  .otp-dl-panel .otp-dl-tier.tier-i { background: #3d3530; color: #b0a39a; }
+  .otp-dl-panel .otp-dl-tier.tier-m, .otp-dl-panel .otp-dl-tier.tier-gm, .otp-dl-panel .otp-dl-tier.tier-c { background: #4a2a5c; color: #d9a0f0; }
+  .otp-dl-panel .p-name { font-weight: 700; color: #f0ece8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .otp-dl-panel .p-tag { font-weight: 500; color: #c9c3bc; }
+  .otp-dl-panel .otp-dl-aicell { display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .otp-dl-panel .otp-dl-aicell .otp-dl-aiscore-badge { font-size: 14px; font-weight: 700; padding: 3px 7px; border-radius: 3px; min-width: 20px; text-align: center; }
+  .otp-dl-panel .otp-dl-rank { display: inline-flex; flex-direction: column; align-items: center; color: #e8e6e3; font-weight: 600; min-width: 26px; }
+  .otp-dl-panel .otp-dl-rank i { font-style: normal; font-size: 11px; line-height: 1; }
+  .otp-dl-panel .kda-nums { color: #e8e6e3; }
+  .otp-dl-panel .kda-ratio { color: #c9c3bc; }
+  .otp-dl-panel .kda-ratio.high { color: #f5a623; font-weight: 700; }
+  .otp-dl-panel .kda-ratio.mid { color: #4c97ff; font-weight: 700; }
+  .otp-dl-panel .otp-dl-dmgcell { text-align: left; }
+  .otp-dl-panel .dmg-bar-bg { background: #1a1b1e; }
+  .otp-dl-panel .otp-dl-item { border-radius: 4px; }
+  .otp-dl-panel .otp-dl-card.lose .otp-dl-item.empty { background: #55303a; }
+  .otp-dl-panel .otp-dl-card.win .otp-dl-item.empty { background: #34466e; }
+  .otp-dl-panel .otp-dl-item.trinket { border-radius: 50%; }
+  /* Match row, deeplol-sized */
+  .otp-mrow.big { grid-template-columns: 112px 290px 84px minmax(0, 1fr) 16px; gap: 12px; padding: 10px 14px 10px 16px; align-items: center; min-height: 104px; }
+  .otp-mrow.big { border-radius: 6px; margin-bottom: 6px; }
+  .otp-mrow.big.lose { background: #3b2329; border: 1px solid #6b2a35; }
+  .otp-mrow.big.win { background: #1f2b47; border: 1px solid #3f5d99; }
+  .otp-mrow.big .otp-m-kda-nums .d { color: #f0505a; }
+  .otp-mrow.big .otp-m-meta { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+  .otp-mrow.big .otp-m-queue { font-size: 13.5px; font-weight: 700; }
+  .otp-mrow.big .otp-m-queue.lose { color: #f0505a; } .otp-mrow.big .otp-m-queue.win { color: #4c97ff; }
+  .otp-mrow.big .otp-m-time { color: #c9c3bc; margin-bottom: 12px; }
+  .otp-mrow.big .otp-m-result { font-size: 12.5px; font-weight: 600; background: none; padding: 0; }
+  .otp-mrow.big .otp-m-result.lose { color: #f0505a; } .otp-mrow.big .otp-m-result.win { color: #4c97ff; }
+  .otp-mrow.big .otp-m-result i { font-style: normal; color: #c9c3bc; font-weight: 500; margin-left: 4px; }
+  .otp-m-fate { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #e8e6e3; background: none !important; border: 0 !important; padding: 0 !important; }
+  .otp-m-fate b { font-weight: 700; color: #e8e6e3 !important; }
+  .otp-m-main { display: flex; flex-direction: column; gap: 5px; }
+  .otp-m-top { display: flex; align-items: center; gap: 6px; }
+  .otp-m-champ { position: relative; width: 50px; height: 50px; flex: none; }
+  .otp-m-champ img.champ-icon { width: 50px; height: 50px; border-radius: 3px; display: block; cursor: pointer; }
+  .otp-m-champ img.lane { position: absolute; right: 0; bottom: 0; width: 17px; height: 17px; background: #111; border-radius: 2px 0 3px 0; padding: 2px; box-sizing: border-box; }
+  .otp-m-sr { display: flex; gap: 2px; }
+  .otp-m-sr div { display: flex; flex-direction: column; gap: 2px; }
+  .otp-m-sr img { width: 24px; height: 24px; border-radius: 3px; background: #111; display: block; }
+  .otp-m-sr .rcol img { border-radius: 50%; background: #0f0f12; }
+  .otp-m-sr .rcol img + img { padding: 3px; box-sizing: border-box; }
+  .otp-mrow.big .otp-m-kda { margin-left: 16px; text-align: center; }
+  .otp-mrow.big .otp-m-kda-nums { font-size: 18px; font-weight: 700; letter-spacing: .5px; }
+  .otp-mrow.big .otp-m-kda-ratio { font-size: 12px; color: #c9c3bc; }
+  .otp-m-items { display: flex; gap: 2px; }
+  .otp-m-items .it { width: 22px; height: 22px; border-radius: 4px; background: rgba(0,0,0,.3); display: block; }
+  .otp-mrow.big.win .otp-m-items .it.empty { background: #2a3d63; }
+  .otp-mrow.big.lose .otp-m-items .it.empty { background: #4d2a33; }
+  .otp-m-items .it.tr { border-radius: 50%; }
+  
+  .otp-m-items .it.tr { margin-left: 4px; }
+  .otp-mrow.big .otp-m-ai { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+  .otp-mrow.big .otp-m-ai .lbl { font-size: 12px; color: #c9c3bc; }
+  .otp-mrow.big .otp-m-ai .otp-ai-badge, .otp-mrow.big .otp-m-ai > span:nth-child(2) { font-size: 15px; font-weight: 700; padding: 3px 9px; border-radius: 3px; min-width: 22px; text-align: center; }
+  .otp-mrow.big .otp-m-ai .pl { font-size: 13px; color: #e8e6e3; font-weight: 600; }
+  .otp-m-teams { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; min-width: 0; }
+  .otp-m-teams .tm { display: flex; align-items: center; gap: 5px; height: 19px; min-width: 0; font-size: 12px; color: #d6d1cb; }
+  .otp-m-teams .tm img { width: 17px; height: 17px; border-radius: 2px; flex: none; cursor: pointer; }
+  .otp-m-teams .tm span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .otp-m-teams .tm .otp-plink { cursor: pointer; }
+  .otp-m-teams .tm .otp-plink:hover { color: #6cb2ff; }
+  .otp-m-teams .tm.me span { color: #fff; font-weight: 800; }
+  .otp-m-chev { color: #f0505a; align-self: end; }
+  .otp-mrow.big.win .otp-m-chev { color: #4c97ff; }
+  @media (max-width: 1100px) { .otp-mrow.big { grid-template-columns: 104px minmax(250px, 1fr) 76px 16px; } .otp-mrow.big .otp-m-teams { display: none; } }
 </style>
 <link rel="stylesheet" href="shell.css">
 </head>
