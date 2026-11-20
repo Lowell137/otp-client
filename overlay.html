@@ -13,7 +13,7 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; }
 
   /* Enemy summoner spell timers. No ultimate timers: Riot bans those in third-party apps. */
-  #panel { position: absolute; top: 120px; right: 16px; width: 186px; background: var(--fg); border: 1px solid var(--border);
+  #panel { position: absolute; top: 120px; right: 16px; width: 218px; background: var(--fg); border: 1px solid var(--border);
     border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .5); overflow: hidden;
     -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
   #panel.hidden { display: none; }
@@ -60,12 +60,41 @@
   #win .bar i { position: absolute; inset: 0 auto 0 0; background: #3b8fe3; border-radius: 3px 0 0 3px; transition: width .6s; }
   #win .next { margin-top: 4px; font-size: 9.5px; color: var(--mute); }
   #panel.min #win .next { display: none; }
+  /* Build & lane helper */
+  #help { display: none; padding: 6px 8px 7px; border-bottom: 1px solid var(--border); }
+  #help.on { display: block; }
+  #panel.min #help { display: none; }
+  .hrow { display: flex; align-items: center; gap: 7px; min-height: 26px; }
+  .hrow + .hrow { margin-top: 5px; }
+  .hrow img { width: 26px; height: 26px; border-radius: 5px; flex: none; outline: 1px solid rgba(255,255,255,.1); outline-offset: -1px; }
+  .hrow .tx { min-width: 0; flex: 1; }
+  .hrow .tx b { display: block; font-size: 11.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hrow .tx span { display: block; font-size: 10px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hrow .tx span.ok { color: var(--ready); font-weight: 700; }
+  .key { width: 26px; height: 26px; flex: none; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; background: var(--raised); color: var(--lightText); }
+  .key.go { background: var(--blue); color: #fff; animation: keyPulse 1.2s ease-in-out infinite; }
+  @keyframes keyPulse { 50% { box-shadow: 0 0 0 3px rgba(16, 99, 183, .45); } }
+  .stats { display: flex; gap: 6px; margin-top: 6px; }
+  .stat { flex: 1; min-width: 0; background: rgba(255,255,255,.04); border-radius: 6px; padding: 4px 6px; }
+  .stat i { display: block; font-style: normal; font-size: 9px; font-weight: 800; letter-spacing: .06em; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat b { font-size: 12px; font-variant-numeric: tabular-nums; }
+  .stat em { font-style: normal; font-size: 10px; font-weight: 700; margin-left: 3px; font-variant-numeric: tabular-nums; }
+  .up { color: var(--ready); } .down { color: #f0505a; }
+  /* Enemy rank badge / one-trick mark */
+  .scout { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .tier { font-size: 10px; font-weight: 800; padding: 1px 5px; border-radius: 4px; background: #3a3d44; color: #c9c3bc; width: fit-content; }
+  .tier.t-g { background: #5a4518; color: #f0c75e; } .tier.t-e { background: #164a32; color: #4fd18b; } .tier.t-p { background: #18474a; color: #5fd0c4; }
+  .tier.t-d { background: #253a6b; color: #8fb0ff; } .tier.t-s { background: #3c454c; color: #c5d2db; } .tier.t-b { background: #4a3127; color: #d9a48f; }
+  .tier.t-i { background: #3d3530; color: #b0a39a; } .tier.t-m, .tier.t-c { background: #4a2a5c; color: #d9a0f0; }
+  .otp { font-size: 9px; font-weight: 800; color: #f5a623; letter-spacing: .04em; }
+  .otp.n { color: #8b8f92; }
 </style>
 </head>
 <body>
   <div id="panel" class="hidden">
     <div id="head"><span class="t">ENEMY SPELLS</span><span class="clock" id="clock">0:00</span><button id="min" title="Collapse">–</button></div>
     <div id="win"><div class="top"><span class="lbl">WIN CHANCE</span><span class="d" id="wd"></span><span class="pct" id="wp">–</span></div><div class="bar"><i id="wb" style="width:50%"></i></div><div class="next" id="wn"></div></div>
+    <div id="help"></div>
     <div id="rows"></div>
     <div id="hint">Click = used · Right-click = reset</div>
   </div>
@@ -153,19 +182,23 @@
     const players = (payload && payload.players) || [];
     if (payload && payload.gameTime != null) { gameTime = payload.gameTime; gameTimeAt = performance.now(); }
     const win = payload && payload.win;
-    if (!players.length && !win) { panel.classList.add('hidden'); return; }
+    const help = payload && payload.helper;
+    if (!players.length && !win && !help) { panel.classList.add('hidden'); return; }
     panel.classList.remove('hidden');
     paintWin(win);
-    document.querySelector('#head .t').textContent = players.length ? 'ENEMY SPELLS' : 'WIN CHANCE';
-    document.getElementById('win').querySelector('.lbl').style.display = players.length ? '' : 'none';
+    paintHelp(help);
+    const spells = players.some((p) => p.spells.length);
+    document.querySelector('#head .t').textContent = spells ? 'ENEMY SPELLS' : help ? 'IN GAME' : 'WIN CHANCE';
+    document.getElementById('win').querySelector('.lbl').style.display = spells || help ? '' : 'none';
     document.getElementById('rows').style.display = players.length ? '' : 'none';
-    document.getElementById('hint').style.display = players.length ? '' : 'none';
+    document.getElementById('hint').style.display = spells ? '' : 'none';
     // Rebuild only when the lineup / spells / haste change, so hover states and timers stay.
-    const key = JSON.stringify(players.map((p) => [p.id, p.icon, p.spells.map((s) => s.icon + s.cd)]));
+    const key = JSON.stringify(players.map((p) => [p.id, p.icon, p.scout, p.spells.map((s) => s.icon + s.cd)]));
     if (key !== lastKey) {
       lastKey = key;
       rows.innerHTML = players.map((p) => `<div class="row" title="${esc(p.name)} — ${esc(p.champ)}">
         <div class="champ"><img src="${esc(p.icon)}" alt=""></div>
+        ${scoutHtml(p.scout)}
         <div class="spells">${p.spells.map((s) => `<div class="sp" data-k="${esc(p.id + ':' + s.name)}" data-cd="${s.cd}" title="${esc(s.name)} · ${fmt(s.cd)}${p.haste ? ' (+' + p.haste + ' haste)' : ''}">
           <img src="${esc(s.icon)}" alt="">${p.haste ? '<span class="h">+' + p.haste + '</span>' : ''}<div class="ring"><span></span></div></div>`).join('')}</div>
       </div>`).join('');
@@ -173,6 +206,41 @@
       [...timers.keys()].forEach((k) => { if (!live.has(k)) timers.delete(k); });
     }
     paint();
+  }
+
+  // Enemy rank (e.g. G2) and one-trick mark, from the lobby scouting.
+  function scoutHtml(sc) {
+    if (!sc) return '';
+    const t = String(sc.tier || 'U');
+    const sub = sc.otp ? '<span class="otp">OTP</span>' : sc.games != null && sc.total ? `<span class="otp n">${sc.games}/${sc.total}</span>` : '';
+    return `<div class="scout"><span class="tier t-${esc(t.charAt(0).toLowerCase())}">${esc(t)}</span>${sub}</div>`;
+  }
+
+  // Next core item, skill to level, CS and lane gold for me.
+  function paintHelp(h) {
+    const box = document.getElementById('help');
+    box.classList.toggle('on', !!h);
+    if (!h) return;
+    const fmtG = (n) => Number(n).toLocaleString('en-US');
+    const sign = (n) => (n > 0 ? '+' : n < 0 ? '−' : '±') + fmtG(Math.abs(n));
+    let html = '';
+    if (h.next && !h.next.done) {
+      html += `<div class="hrow"><img src="${esc(h.next.icon)}" alt=""><div class="tx"><b>${esc(h.next.name)}</b>${h.next.short ? `<span>${fmtG(h.next.short)} gold short</span>` : '<span class="ok">Ready to buy</span>'}</div></div>`;
+    } else if (h.next && h.next.done) {
+      html += '<div class="hrow"><div class="tx"><b>Core build done</b></div></div>';
+    }
+    if (h.skill && h.skill.order) {
+      const k = h.skill.next || h.skill.order.charAt(0);
+      html += `<div class="hrow"><span class="key${h.skill.next ? ' go' : ''}">${esc(k)}</span><div class="tx"><b>${h.skill.next ? 'Level up ' + esc(h.skill.next) : 'Skill order'}</b><span>Max ${esc(h.skill.order)}</span></div></div>`;
+    }
+    const cs = h.cs || {};
+    const csd = cs.opp != null ? cs.cs - cs.opp : null;
+    let st = `<div class="stat"><i>CS</i><b>${cs.cs ?? 0}</b><em style="color:#8b8f92">${cs.perMin ?? 0}/m</em>`;
+    if (csd != null && csd !== 0) st += `<em class="${csd > 0 ? 'up' : 'down'}">${csd > 0 ? '+' : '−'}${Math.abs(csd)}</em>`;
+    st += '</div>';
+    if (h.lane) st += `<div class="stat" title="Item value vs ${esc(h.lane.opp)}"><i>ITEMS VS ${esc(String(h.lane.opp).toUpperCase())}</i><b class="${h.lane.diff > 0 ? 'up' : h.lane.diff < 0 ? 'down' : ''}">${sign(h.lane.diff)}</b></div>`;
+    html += `<div class="stats">${st}</div>`;
+    box.innerHTML = html;
   }
 
   function paintWin(w) {

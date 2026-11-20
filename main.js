@@ -167,9 +167,9 @@ async function getRuneIcon(id) {
 let lastSentChamp = null;
 let lastAutoBuildId = null;
 let champDebounceTimer = null;
-const flags = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, overlay: false, winChance: false, flashSlot: 'D' };
+const flags = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, overlay: false, winChance: false, helper: false, flashSlot: 'D' };
 // The in-game overlay shows when either part is on: spell timers or win chance.
-const overlayWanted = () => !!(flags.overlay || flags.winChance) || process.env.OTP_OVERLAY_DEMO === '1';
+const overlayWanted = () => !!(flags.overlay || flags.winChance || flags.helper) || process.env.OTP_OVERLAY_DEMO === '1';
 
 let lobbyWatch = null;
 let postGame = null;
@@ -620,7 +620,7 @@ async function buildOverlayPayload(data) {
     const cd = (base) => Math.round(base * 100 / (100 + haste));
     const champKey = String(p.rawChampionName || '').replace('game_character_displayname_', '') || p.championName.replace(/[^A-Za-z]/g, '');
     players.push({
-      id, name: p.riotIdGameName || p.summonerName || id, champ: p.championName, level: p.level || null,
+      id, name: p.riotIdGameName || p.summonerName || id, champ: p.championName, champKey, level: p.level || null,
       position: p.position || '', haste,
       icon: `${ddragon}/img/champion/${champKey}.png`,
       spells: [
@@ -699,8 +699,21 @@ async function liveTick() {
     showOverlay();
     if (overlayWin && !overlayWin.isDestroyed()) {
       const payload = await buildOverlayPayload(data);
-      if (!flags.overlay && process.env.OTP_OVERLAY_DEMO !== '1') payload.players = [];
+      // Spell timers off: no spells; the enemy rows stay (ranks) only with the helper on.
+      if (!flags.overlay && process.env.OTP_OVERLAY_DEMO !== '1') payload.players = flags.helper ? payload.players.map((p) => ({ ...p, spells: [] })) : [];
       payload.win = flags.winChance || process.env.OTP_OVERLAY_DEMO === '1' ? await liveWinChance(data).catch(() => null) : null;
+      if (flags.helper || process.env.OTP_OVERLAY_DEMO === '1') {
+        payload.helper = await require('./overlay-info.js').helper(data, await ddragonBase()).catch(() => null);
+        // Enemy ranks / one-trick mark from the lobby scouting (Porofessor-style).
+        const lob = lobbyWatch ? lobbyWatch.current() : null;
+        const key = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
+        const scout = {};
+        for (const e of lob?.enemies || []) if (e.champ) scout[key(e.champ)] = e;
+        for (const p of payload.players) {
+          const e = scout[key(p.champKey)] || scout[key(p.champ)];
+          if (e) p.scout = { tier: e.rank ? `${String(e.rank.tier).charAt(0)}${e.rank.division ? { I: 1, II: 2, III: 3, IV: 4 }[e.rank.division] || '' : ''}` : 'U', otp: !!e.recent?.otp, games: e.recent?.games ?? null, total: e.recent?.total ?? null };
+        }
+      }
       overlayWin.webContents.send('otp:overlay-players', payload);
     }
   } catch {
