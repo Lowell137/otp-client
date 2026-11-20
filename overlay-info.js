@@ -101,12 +101,52 @@ async function helper(all, ddragonBase) {
     if (nextId) {
       const it = data[nextId];
       out.next = { id: nextId, name: it.name, icon: `${ddragonBase}/img/item/${nextId}.png`, cost: it.gold?.total || 0, short: goldShort(nextId, inv, all.activePlayer?.currentGold || 0, data) };
-    } else if (ordered.length) out.next = { done: true };
+    } else if (ordered.length) {
+      // Core build done: next item against the enemy team (damage type, healing, fed player).
+      const sit = await situational(me, enemies, inv, all.activePlayer?.currentGold || 0, data, ddragonBase).catch(() => null);
+      out.next = sit || { done: true };
+    }
     const ab = all.activePlayer?.abilities || {};
     const lv = { Q: ab.Q?.abilityLevel || 0, W: ab.W?.abilityLevel || 0, E: ab.E?.abilityLevel || 0, R: ab.R?.abilityLevel || 0 };
     out.skill = { order: b.order.join(' > '), next: nextSkill(b.order, lv, all.activePlayer?.level || me.level || 1) };
   } catch {}
   return out;
+}
+
+// After the core build: the first defensive item for my class against this enemy
+// team that I don't have yet (ai/tools/recommend_items.js), anti-heal first when
+// they have two or more healers. The team analysis is kept for the whole game.
+const sitCache = new Map();
+async function situational(me, enemies, inv, gold, data, ddragonBase) {
+  const names = enemies.map((p) => p.championName).filter(Boolean);
+  if (!names.length) return null;
+  const key = `${me.championName}|${names.join(',')}`;
+  let rec = sitCache.get(key);
+  if (!rec) {
+    rec = await require('./ai/tools/recommend_items.js').run({ myChampion: me.championName, enemies: names }, {});
+    if (rec.error) return null;
+    sitCache.set(key, rec);
+  }
+  const byName = {};
+  for (const [id, it] of Object.entries(data)) if (it.maps?.['11'] !== false && it.gold?.purchasable !== false) byName[it.name] = id;
+  let list = (rec.defensiveItems || []).map((x) => x.name);
+  if (rec.healers?.length >= 2) {
+    const anti = list.filter((n) => /Morello|Mortal Reminder|Chempunk|Thornmail|Chemtech|Executioner|Oblivion/i.test(n));
+    list = [...anti, ...list.filter((n) => !anti.includes(n))];
+  }
+  const pick = list.map((n) => byName[n]).find((id) => id && !inv.includes(id));
+  if (!pick) return { done: true };
+  const it = data[pick];
+  // Why: anti-heal / damage share, plus the fed enemy (highest item value) if well ahead.
+  const value = (p) => (p.items || []).reduce((a, x) => a + (data[String(x.itemID)]?.gold?.total || 0), 0);
+  const ranked = [...enemies].sort((a, b) => value(b) - value(a));
+  const fed = ranked.length > 1 && value(ranked[0]) - value(ranked[1]) > 1500 ? ranked[0].championName : '';
+  const isAnti = /Morello|Mortal Reminder|Chempunk|Thornmail|Chemtech|Executioner|Oblivion/i.test(it.name) && rec.healers?.length >= 2;
+  const why = isAnti ? `Anti-heal vs ${rec.healers.slice(0, 2).join(', ')}` : `${rec.physicalDamage} AD / ${rec.magicDamage} AP team`;
+  return {
+    id: pick, name: it.name, icon: `${ddragonBase}/img/item/${pick}.png`, cost: it.gold?.total || 0,
+    short: goldShort(pick, inv, gold, data), situational: true, why: fed ? `${why} · ${fed} is fed` : why,
+  };
 }
 
 module.exports = { helper, nextSkill, goldShort };

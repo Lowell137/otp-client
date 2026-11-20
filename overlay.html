@@ -54,6 +54,8 @@
   .key.go { background: var(--blue); color: #fff; animation: keyPulse 1.2s ease-in-out infinite; }
   @keyframes keyPulse { 50% { box-shadow: 0 0 0 3px rgba(16, 99, 183, .45); } }
   .empty { font-size: 10.5px; color: var(--mute); padding: 2px 0; }
+  .sit { font-size: 9px; font-weight: 800; letter-spacing: .08em; color: #f5a623; margin-bottom: 4px; }
+  .why { font-size: 10px; color: var(--lightText); margin: 3px 0 2px; line-height: 1.35; }
 
   /* Lane: CS + item value vs lane opponent */
   .stats { display: flex; gap: 6px; padding: 6px 8px 7px; }
@@ -255,9 +257,13 @@
     const fmtG = (n) => Number(n).toLocaleString('en-US');
     let html = '';
     if (h.next && !h.next.done) {
-      html += `<div class="hrow"><img src="${esc(h.next.icon)}" alt=""><div class="tx"><b>${esc(h.next.name)}</b>${h.next.short ? `<span>${fmtG(h.next.short)} gold short</span>` : '<span class="ok">Ready to buy</span>'}</div></div>`;
+      const cost = h.next.short ? `<span>${fmtG(h.next.short)} gold short</span>` : '<span class="ok">Ready to buy</span>';
+      // After the core build: an item against their team, with the reason.
+      if (h.next.situational) html += `<div class="sit">VS THEIR TEAM</div>`;
+      html += `<div class="hrow"><img src="${esc(h.next.icon)}" alt=""><div class="tx"><b>${esc(h.next.name)}</b>${cost}</div></div>`;
+      if (h.next.situational && h.next.why) html += `<div class="why">${esc(h.next.why)}</div>`;
     } else if (h.next && h.next.done) {
-      html += '<div class="hrow"><div class="tx"><b>Core build done</b><span>Situational items now</span></div></div>';
+      html += '<div class="hrow"><div class="tx"><b>Build complete</b><span>Nothing left to suggest</span></div></div>';
     }
     if (h.skill && h.skill.order) {
       const k = h.skill.next || h.skill.order.charAt(0);
