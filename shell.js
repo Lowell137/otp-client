@@ -55,7 +55,45 @@
   })();
 
   const norm = (s) => s.toLowerCase().replace(/[^a-z]/g, '');
+  // Summoner page: the header search looks up players (Name#TAG) instead of
+  // champions; suggestions are the recent searches. The page's preload listens
+  // for 'otp-summoner-search'.
+  const summonerMode = page === 'summoner';
+  if (summonerMode) input.placeholder = 'Search Summoner  (Name#TAG)';
+  const escH = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const recents = () => { try { return JSON.parse(localStorage.getItem('otp.recent') || '[]'); } catch { return []; } };
+  function renderSummoners() {
+    const raw = input.value.trim();
+    const q = raw.toLowerCase();
+    const list = recents().filter((r) => !q || `${r.name}#${r.tag}`.toLowerCase().includes(q)).slice(0, 7);
+    shown = [];
+    if (raw && raw.includes('#') && raw.indexOf('#') > 0) shown.push({ typed: true, text: raw });
+    shown.push(...list.map((r) => ({ name: r.name, tag: r.tag, region: r.region })));
+    if (!shown.length) { box.classList.remove('open'); return; }
+    sel = 0;
+    box.innerHTML = shown.map((s, i) => s.typed
+      ? `<div class="it${i === sel ? ' sel' : ''}" data-i="${i}"><span>Search <b>${escH(s.text)}</b></span></div>`
+      : `<div class="it${i === sel ? ' sel' : ''}" data-i="${i}"><span>${escH(s.name)} <span style="opacity:.6">#${escH(s.tag)}</span></span><span style="margin-left:auto;font-size:11px;opacity:.7">${escH(String(s.region || '').replace(/1$/, '').toUpperCase())}</span></div>`).join('');
+    box.classList.add('open');
+  }
+  function goSummoner(s) {
+    let pick = s;
+    if (!pick) {
+      const raw = input.value.trim();
+      const i = raw.lastIndexOf('#');
+      if (i < 1) return;
+      pick = { name: raw.slice(0, i), tag: raw.slice(i + 1) };
+    } else if (pick.typed) {
+      const i = pick.text.lastIndexOf('#');
+      pick = { name: pick.text.slice(0, i), tag: pick.text.slice(i + 1) };
+    }
+    input.value = '';
+    box.classList.remove('open');
+    input.blur();
+    window.dispatchEvent(new CustomEvent('otp-summoner-search', { detail: JSON.stringify(pick) }));
+  }
   function render() {
+    if (summonerMode) { renderSummoners(); return; }
     const q = norm(input.value);
     if (!q) { box.classList.remove('open'); shown = []; return; }
     const starts = champs.filter((c) => norm(c.name).startsWith(q));
@@ -69,6 +107,7 @@
   }
   function mark() { box.querySelectorAll('.it').forEach((el, i) => el.classList.toggle('sel', i === sel)); }
   function go(c) {
+    if (summonerMode) { goSummoner(c); return; }
     if (!c) return;
     input.value = '';
     box.classList.remove('open');

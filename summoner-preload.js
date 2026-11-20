@@ -134,6 +134,7 @@ async function doLobby() {
 function renderLobbyList(res) {
   const body = document.querySelector('#otp-sbody');
   if (!body) return;
+  document.body.classList.add('has-result');
   const up = document.querySelector('#otp-updated');
   if (up) up.textContent = '';
   document.querySelector('#otp-qtabs').classList.remove('show');
@@ -195,28 +196,162 @@ function updKey() {
   const p = lastDlRes || {};
   return p.puuid || ((p.profile?.name || '') + '#' + (p.profile?.tag || ''));
 }
+// "Last updated" is deeplol's own update time for this player (updated-time), not
+// when we looked: searching used to print "0m ago" while deeplol's data was hours old.
+let updatingNow = false;
 function paintUpdated() {
   const el = document.querySelector('#otp-updated');
   if (!el) return;
-  let map = {};
-  try { map = JSON.parse(localStorage.getItem('otp.updated') || '{}'); } catch {}
-  const ts = map[updKey()];
-  el.textContent = ts ? `Last updated: ${timeAgo(ts)}` : '';
+  if (updatingNow) { el.textContent = 'Updating from Riot…'; return; }
+  const ts = lastDlRes?.extra?.updatedAt;
+  el.textContent = ts ? `Last updated: ${timeAgo(ts) || 'just now'}` : '';
 }
-function markUpdated() {
-  try {
-    const map = JSON.parse(localStorage.getItem('otp.updated') || '{}');
-    map[updKey()] = Date.now();
-    localStorage.setItem('otp.updated', JSON.stringify(map));
-  } catch {}
+function markUpdated() { paintUpdated(); }
+
+// Ranks, LP history, season champion stats, deeplol update time. Data older than
+// 5 minutes is refreshed automatically (deeplol's "Update"), then the profile
+// is reloaded in place.
+const AUTO_RENEW_SEC = 5 * 60;
+async function loadExtra(res, allowRenew = true) {
+  if (!res?.ok || !res.puuid) return;
+  const key = res.puuid;
+  let ex = null;
+  try { ex = await ipcRenderer.invoke('otp:deeplol-extra', { platform: res.platform, puuid: res.puuid, summonerId: res.summonerId }); } catch {}
+  if (!lastDlRes || lastDlRes.puuid !== key || !ex) return;
+  lastDlRes.extra = ex;
+  paintExtra();
   paintUpdated();
+  const age = ex.updatedAt ? Date.now() / 1000 - ex.updatedAt : Infinity;
+  if (allowRenew && age > AUTO_RENEW_SEC) renewProfile();
+}
+async function renewProfile() {
+  if (!lastDlRes?.puuid || updatingNow) return;
+  const cur = lastDlRes;
+  updatingNow = true;
+  paintUpdated();
+  const btn = document.querySelector('#otp-refresh');
+  btn?.classList.add('spin');
+  try {
+    await ipcRenderer.invoke('otp:deeplol-renew', { platform: cur.platform, puuid: cur.puuid });
+    const res = await ipcRenderer.invoke('otp:deeplol', { region: cur.platform, gameName: cur.profile.name, tagLine: cur.profile.tag });
+    if (!lastDlRes || lastDlRes.puuid !== cur.puuid) return;
+    updatingNow = false;
+    if (res?.ok) {
+      const firstNew = res.pendingIds?.[0]?.id;
+      const firstOld = (cur.pendingIds || [])[0]?.id;
+      const scroll = (document.getElementById('otp-scroll') || document.scrollingElement).scrollTop;
+      if (firstNew !== firstOld) renderSummoner(res, false, true);
+      else loadExtra(res, false);
+      (document.getElementById('otp-scroll') || document.scrollingElement).scrollTop = scroll;
+    }
+  } finally {
+    updatingNow = false;
+    btn?.classList.remove('spin');
+    paintUpdated();
+  }
 }
 
-function renderSummoner(res, showBack) {
+const ROLE_SLUG = { TOP: 'top', JUNGLE: 'jungle', MIDDLE: 'mid', BOTTOM: 'bot', UTILITY: 'supp' };
+// deeplol positions: Top, Jungle, Middle, Bot, Supporter (Riot: TOP ... UTILITY).
+function normPos(p) {
+  const x = String(p || '').toUpperCase();
+  return { TOP: 'TOP', JUNGLE: 'JUNGLE', MIDDLE: 'MIDDLE', MID: 'MIDDLE', BOT: 'BOTTOM', BOTTOM: 'BOTTOM', ADC: 'BOTTOM', SUPPORTER: 'UTILITY', SUPPORT: 'UTILITY', UTILITY: 'UTILITY' }[x] || '';
+}
+const TIER_COL = { IRON: '#8c7b72', BRONZE: '#b0816d', SILVER: '#9fb0bb', GOLD: '#d6a64b', PLATINUM: '#4fb3a9', EMERALD: '#2fb96b', DIAMOND: '#6c95f2', MASTER: '#b866dc', GRANDMASTER: '#e0605a', CHALLENGER: '#f0c75e' };
+const DIVS = ['', 'I', 'II', 'III', 'IV'];
+const tierName = (t) => (t ? t.charAt(0) + t.slice(1).toLowerCase() : '');
+const apexTier = (t) => /MASTER|GRANDMASTER|CHALLENGER/.test(t || '');
+// Champion icons (match rows, champion lists) open that champion's onetricks build.
+function openBuild(champ, position) {
+  if (!champ || !/^[A-Za-z]+$/.test(champ)) return;
+  const role = ROLE_SLUG[normPos(position)] || '';
+  ipcRenderer.send('otp:go-build', `/champions/builds/${champ}${role ? '?role=' + role : ''}`);
+}
+document.addEventListener('click', (e) => {
+  const el = e.target.closest && e.target.closest('[data-build]');
+  if (!el) return;
+  e.preventDefault();
+  e.stopPropagation();
+  openBuild(el.dataset.build, el.dataset.pos);
+}, true);
+
+// LP over the last 30 days as a small line chart (tier-chart).
+function lpChartSvg(points) {
+  const pts = (points || []).map((p) => {
+    const t = ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'].indexOf(p.tier);
+    const v = t < 0 ? null : t >= 7 ? 2800 + p.league_points : t * 400 + (4 - (p.division || 4)) * 100 + p.league_points;
+    return v == null ? null : { ts: p.timestamp, v, p };
+  }).filter(Boolean);
+  if (pts.length < 2) return '';
+  const W = 260, H = 80, P = 6;
+  const min = Math.min(...pts.map((x) => x.v)), max = Math.max(...pts.map((x) => x.v));
+  const span = Math.max(40, max - min);
+  const t0 = pts[0].ts, t1 = pts[pts.length - 1].ts || t0 + 1;
+  const X = (ts) => P + ((ts - t0) / Math.max(1, t1 - t0)) * (W - 2 * P);
+  const Y = (v) => H - P - ((v - min) / span) * (H - 2 * P);
+  const d = pts.map((x, i) => `${i ? 'L' : 'M'}${X(x.ts).toFixed(1)},${Y(x.v).toFixed(1)}`).join(' ');
+  const delta = pts[pts.length - 1].v - pts[0].v;
+  const col = delta >= 0 ? '#2fb96b' : '#e0605a';
+  return `<div class="otp-lpchart"><div class="otp-lpchart-head"><span>Last 30 days</span><span style="color:${col};font-weight:700">${delta >= 0 ? '+' : ''}${delta} LP</span></div>
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><path d="${d}" fill="none" stroke="${col}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>${pts.map((x) => `<circle cx="${X(x.ts).toFixed(1)}" cy="${Y(x.v).toFixed(1)}" r="2.2" fill="${col}"><title>${tierName(x.p.tier)} ${apexTier(x.p.tier) ? '' : DIVS[x.p.division] || ''} ${x.p.league_points} LP</title></circle>`).join('')}</svg></div>`;
+}
+
+function paintExtra() {
+  const ex = lastDlRes?.extra;
+  if (!ex) return;
+  const rb = document.querySelector('#otp-rankedbox');
+  if (rb) {
+    const card = (label, r, hist) => {
+      if (!r) return `<div class="otp-rank-q"><div class="otp-rank-top"><span class="q">${label}</span><span class="un">Unranked</span></div></div>`;
+      const tot = (r.wins || 0) + (r.losses || 0);
+      const wr = tot ? Math.round((r.wins / tot) * 100) : 0;
+      return `<div class="otp-rank-q">
+        <div class="otp-rank-top"><span class="q">${label}</span>${r.peak ? `<span class="peak">Peak ${esc(r.peak.split(' ').map((w, i) => (i ? w : tierName(w))).join(' '))}</span>` : ''}</div>
+        <div class="otp-rank-main"><b style="color:${TIER_COL[r.tier] || '#e8e6e3'}">${tierName(r.tier)}${apexTier(r.tier) ? '' : ' ' + (DIVS[r.division] || '')}</b><span>${r.lp} LP</span></div>
+        <div class="otp-rank-sub"><span>${r.wins}W ${r.losses}L</span><span class="${wr >= 50 ? 'up' : 'down'}">${wr}%</span></div>
+        ${lpChartSvg(hist)}
+      </div>`;
+    };
+    rb.innerHTML = card('Ranked Solo', ex.ranks?.solo, ex.lpHistory?.solo) + card('Ranked Flex', ex.ranks?.flex, ex.lpHistory?.flex);
+  }
+  paintSeasonChamps();
+}
+// Season champion stats (deeplol champion-stat) in the left column, filtered by the
+// queue tab: Total / Ranked Solo / Ranked Flex.
+function paintSeasonChamps() {
+  const ex = lastDlRes?.extra;
+  const cb = document.querySelector('#otp-champsbox');
+  const cl = document.querySelector('#otp-champlabel');
+  if (!ex || !cb) return;
+  const qk = curQueue === 420 ? 'ranked_solo_5x5' : curQueue === 440 ? 'ranked_flex_sr' : 'total';
+  const list = (ex.champStats?.[qk] || []).slice(0, 12);
+  if (cl) cl.textContent = `Season champions${qk === 'total' ? '' : qk === 'ranked_solo_5x5' ? ' · Solo' : ' · Flex'}`;
+  if (!list.length) { cb.innerHTML = '<div class="otp-serr" style="padding:10px;">No games this season</div>'; return; }
+  const ddv = (lastDlRes.profile?.iconUrl || '').match(/cdn\/([^/]+)\//)?.[1] || '16.23.1';
+  cb.innerHTML = list.map((c) => {
+    const wrCol = c.wr >= 60 ? '#10b981' : c.wr <= 40 ? '#ef4444' : '#e2e8f0';
+    return `<div class="otp-side-champ otp-season-champ" data-build="${esc(c.champ)}" title="Open the ${esc(c.champ)} build">
+      <img src="https://ddragon.leagueoflegends.com/cdn/${ddv}/img/champion/${esc(c.champ)}.png">
+      <div>
+        <div class="otp-side-champ-name">${esc(c.champ)}</div>
+        <div class="otp-side-champ-kda">${(c.kda ?? 0).toFixed(2)} KDA · ${(c.cspm ?? 0).toFixed(1)} CS/m</div>
+      </div>
+      <div class="otp-side-champ-right">
+        <div class="otp-side-champ-wr" style="color:${wrCol}">${Math.round(c.wr)}%</div>
+        <div class="otp-side-champ-count">${c.games} games</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderSummoner(res, showBack, isRenew) {
   const body = document.querySelector('#otp-sbody');
   if (!body) return;
   if (!res || !res.ok) { body.innerHTML = `<div class="otp-serr">Error: ${esc(res?.error || 'unknown')}</div>`; return; }
-  lastDlRes = { ...res, matches: res.matches ? [...res.matches] : [], _view: [], _painted: 0 };
+  const prevExtra = isRenew && lastDlRes && lastDlRes.puuid === res.puuid ? lastDlRes.extra : null;
+  lastDlRes = { ...res, matches: res.matches ? [...res.matches] : [], _view: [], _painted: 0, extra: prevExtra };
+  document.body.classList.add('has-result');
+  setTimeout(() => { loadExtra(res, !isRenew); }, 0);
   markUpdated();
 
   const backHtml = (showBack && lastLobbyRes) ? `<div class="otp-serr" style="text-align:left;padding:0 0 8px;"><a href="javascript:void(0)" id="otp-backlob" style="color:#6cb2ff">← Back to lobby</a></div>` : '';
@@ -278,7 +413,8 @@ function dlStats() {
     if (m.win) w++; k += m.kills; d += m.deaths; a += m.assists;
     if (typeof m.ai === 'number') { aiSum += m.ai; aiN++; }
     if (typeof m.teamDiff === 'number') { diffSum += m.teamDiff; diffN++; }
-    if (m.position && roles[m.position] !== undefined) roles[m.position]++;
+    const pos = normPos(m.position);
+    if (pos && roles[pos] !== undefined) roles[pos]++;
   });
 
   const n = ms.length || 1;
@@ -375,7 +511,7 @@ function matchRowHtml(m, mi) {
       </div>
 
       <div class="otp-m-champbox">
-        <img class="champ-icon" loading="lazy" src="${m.icon}" title="${esc(m.champ)}">
+        <img class="champ-icon" loading="lazy" src="${m.icon}" title="${esc(m.champ)} build" data-build="${esc(m.champ)}" data-pos="${esc(m.position || '')}">
         <div class="otp-m-spells-runes">
           ${spellsHtml}
           ${runesHtml}
@@ -557,6 +693,7 @@ function paintMatchData() {
     });
   }
   renderQtabs();
+  if (lastDlRes.extra) paintExtra();
 }
 
 async function loadMatchChunks(res) {
@@ -719,7 +856,7 @@ function toggleMatchExpand(mi) {
         return `<div class="otp-dl-row">
           <div class="otp-dl-pcell">
             <div class="otp-dl-iconwrap">
-              <img class="champ-img" loading="lazy" src="${t.icon}">
+              <img class="champ-img" loading="lazy" src="${t.icon}" title="${esc(t.champ)} build" data-build="${esc(t.champ)}" data-pos="${esc(t.position || '')}">
               ${t.lvl ? `<span class="champ-lvl">${t.lvl}</span>` : ''}
             </div>
             ${t.tier ? `<span class="otp-dl-tier tier-${String(t.tier).toLowerCase().slice(0, 1)}">${esc(t.tier.slice(0, 2))}</span>` : ''}
@@ -823,7 +960,8 @@ window.addEventListener('DOMContentLoaded', () => {
     btn.classList.add('spin');
     try {
       const inp = document.querySelector('#otp-sinput');
-      if (inp && inp.value.trim()) await doSummonerSearch(true);
+      if (lastDlRes?.puuid) await renewProfile();
+      else if (inp && inp.value.trim()) await doSummonerSearch(true);
       else if (lastLobbyRes) await doLobby();
     } finally {
       btn.classList.remove('spin');
@@ -833,6 +971,18 @@ window.addEventListener('DOMContentLoaded', () => {
   document.querySelector('#otp-sinput').focus();
   renderRecents();
   renderQtabs();
+  const tl = document.querySelector('#otp-toplobby');
+  if (tl) tl.onclick = () => doLobby();
+});
+// Header search (shell.js, summoner mode): { name, tag, region? }.
+window.addEventListener('otp-summoner-search', (e) => {
+  let p = null;
+  try { p = JSON.parse(e.detail || 'null'); } catch {}
+  if (!p || !p.name || !p.tag) return;
+  if (p.region) { settings.region = p.region; saveSettings(); syncRegBadge(); }
+  const inp = document.querySelector('#otp-sinput');
+  if (inp) inp.value = `${p.name}#${p.tag}`;
+  doSummonerSearch();
 });
 
 // Shared header (shell.js): route [data-go] clicks to main.

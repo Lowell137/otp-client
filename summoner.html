@@ -955,12 +955,39 @@
   .otp-serr { padding: 24px; text-align: center; color: #c2baaf; }
   .otp-serr a { color: #6cb2ff; }
   #otp-foot { margin-top: 18px; font-size: 11px; color: #8b8f92; text-align: center; }
+
+  /* After a lookup the header search takes over: no big hero search. */
+  body.has-result #otp-hero { display: none; }
+  #otp-toplobby { display: none; margin-left: auto; align-items: center; gap: 6px; background: transparent; border: 1px solid #2c2f31; color: #e8e6e3; border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  #otp-toplobby:hover { border-color: #656e73; background: #1b1d1e; }
+  body.has-result #otp-toplobby { display: inline-flex; }
+  /* Ranked (deeplol live ranks + LP history) */
+  .otp-rank-q { padding: 10px 2px; border-bottom: 1px solid #2c2f31; }
+  .otp-rank-q:last-child { border-bottom: 0; }
+  .otp-rank-top { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #c2baaf; }
+  .otp-rank-top .q { font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+  .otp-rank-top .peak { font-size: 11px; color: #8f96a3; }
+  .otp-rank-top .un { color: #8f96a3; }
+  .otp-rank-main { display: flex; align-items: baseline; justify-content: space-between; margin-top: 4px; }
+  .otp-rank-main b { font-size: 17px; }
+  .otp-rank-main span { font-size: 12px; color: #e8e6e3; }
+  .otp-rank-sub { display: flex; justify-content: space-between; font-size: 11.5px; color: #8f96a3; margin-top: 2px; }
+  .otp-rank-sub .up { color: #10b981; font-weight: 700; }
+  .otp-rank-sub .down { color: #ef4444; font-weight: 700; }
+  .otp-lpchart { margin-top: 8px; }
+  .otp-lpchart-head { display: flex; justify-content: space-between; font-size: 11px; color: #8f96a3; margin-bottom: 3px; }
+  .otp-lpchart svg { width: 100%; height: 64px; display: block; background: #181a1b; border-radius: 6px; }
+  /* Champion icons open the onetricks build */
+  [data-build] { cursor: pointer; }
+  .otp-m-champbox img.champ-icon[data-build]:hover, .otp-dl-iconwrap img[data-build]:hover { outline: 2px solid #1063b7; outline-offset: 1px; }
+  .otp-season-champ { cursor: pointer; border-radius: 8px; }
+  .otp-season-champ:hover { background: #1b1d1e; }
 </style>
 <link rel="stylesheet" href="shell.css">
 </head>
 <body data-page="summoner">
 <div id="otp-wrap">
-  <div id="otp-top"><button id="otp-back" title="Back" aria-label="Back"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button><h1>Summoner Lookup</h1></div>
+  <div id="otp-top"><button id="otp-back" title="Back" aria-label="Back"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button><h1>Summoner Lookup</h1><button id="otp-toplobby" title="Whole lobby in champion select"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg><span>Lobby</span></button></div>
   <div id="otp-hero">
     <h2>Whose game are we checking?</h2>
     <div id="otp-sbar">

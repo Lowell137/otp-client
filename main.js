@@ -1265,12 +1265,68 @@ app.whenReady().then(async () => {
       const parts = String(entry.tier || '').split(' ');
       return {
         ok: true, source: 'deeplol', puuid: puu, platform, pendingIds,
+        summonerId: prof?.summoner_basic_info_dict?.summoner_id || '',
         profile: { name: entry.riot_id_name, tag: entry.riot_id_tag_line, level: entry.summoner_level, iconUrl: `${base}/img/profileicon/${entry.profile_id}.png` },
         ranks: [{ queueType: 'Ranked', tier: parts[0] || '?', rank: parts[1] || '', leaguePoints: entry.lp ?? 0, wins: null, losses: null }]
       };
     } catch (e) {
       return { ok: false, error: String(e?.message ?? e) };
     }
+  });
+
+  // Everything deeplol's own profile page shows that the match list doesn't:
+  // live ranks (solo/flex with W/L and peak), the LP history, season champion
+  // stats and deeplol's last update time.
+  ipcMain.handle('otp:deeplol-extra', async (_e, q) => {
+    const platform = String(q?.platform || 'TR1').toUpperCase();
+    const puu = encodeURIComponent(String(q?.puuid || ''));
+    const sid = encodeURIComponent(String(q?.summonerId || ''));
+    const j = (u) => dlFetchText(u, 6000).then((t) => JSON.parse(t)).catch(() => null);
+    let season = 27;
+    try { const s = await j(`${DL}/common/season-list`); if (s?.season_list?.[0]) season = s.season_list[0]; } catch {}
+    const [rt, chart, cs, up] = await Promise.all([
+      // summoner_id is empty for newer accounts; the endpoint only needs the key present.
+      j(`${DL}/summoner/summoner-realtime?puu_id=${puu}&platform_id=${platform}&summoner_id=${sid}`),
+      j(`${DL}/summoner/tier-chart?puu_id=${puu}&platform_id=${platform}&last_match_id=0`),
+      j(`${DL}/summoner/champion-stat?puu_id=${puu}&season=${season}&platform_id=${platform}`),
+      j(`${DL}/summoner/updated-time?puu_id=${puu}&platform_id=${platform}`),
+    ]);
+    const conv = (x) => (x && x.tier ? { tier: x.tier, division: x.division, lp: x.league_points, wins: x.wins, losses: x.losses, peak: x.high_tier || '', peakLp: x.high_lp ?? null } : null);
+    const champStats = {};
+    for (const [qk, block] of Object.entries(cs?.counter_champion_stats || {})) {
+      const list = block?.enemy_champion_stats?.All || [];
+      champStats[qk] = [];
+      for (const c of list) {
+        if (!c || !c.champion_id) continue;
+        champStats[qk].push({
+          champ: (await champIdToName(c.champion_id)) || String(c.champion_id), games: c.games, wins: c.wins, losses: c.losses,
+          wr: c.win_rate, kda: c.kda, k: c.kills, d: c.deaths, a: c.assists, cspm: c.cs_per_min,
+          dpm: c.damage_dealt_per_min, gd15: c.gold_diff_15, ai: c.ai_score,
+        });
+      }
+      champStats[qk].sort((a, b) => b.games - a.games);
+    }
+    return {
+      ranks: { solo: conv(rt?.season_tier_info_dict?.ranked_solo_5x5), flex: conv(rt?.season_tier_info_dict?.ranked_flex_sr) },
+      lpHistory: { solo: chart?.ranked_solo_5x5 || [], flex: chart?.ranked_flex_sr || [] },
+      champStats,
+      updatedAt: up?.updated_timestamp || null,
+    };
+  });
+  // deeplol's "Update" button: refresh matches, ranks and champion stats.
+  ipcMain.handle('otp:deeplol-renew', async (_e, q) => {
+    const platform = String(q?.platform || 'TR1').toUpperCase();
+    const puu = String(q?.puuid || '');
+    if (!puu) return { ok: false };
+    dlMatchCache.clear();
+    const body = { puu_id: puu, platform_id: platform };
+    try { await dlPostJson('https://renew.deeplol.gg/match/check-refresh', body); } catch {}
+    const r = await Promise.allSettled([
+      dlPostJson('https://renew.deeplol.gg/match/refresh-matches', { ...body, queue_type: 'ALL', start_idx: 0, count: 30 }, 25000),
+      dlPostJson('https://renew.deeplol.gg/match/refresh_tier', body, 15000),
+      dlPostJson('https://renew.deeplol.gg/match/refresh-champion-stat', body, 25000),
+    ]);
+    return { ok: r[0].status === 'fulfilled', parts: r.map((x) => x.status) };
   });
   function dlPostJson(url, body, timeoutMs = 15000) {
     return new Promise((resolve, reject) => {
