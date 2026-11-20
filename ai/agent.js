@@ -89,6 +89,7 @@ async function run({ history, onEvent, signal, model }) {
         continue;
       }
       const t = tools.byName(tc.name);
+      tc.args = await fillFromQuestion(tc.name, tc.args || {}, lastUser).catch(() => tc.args);
       onEvent({ type: 'tool', name: tc.name, args: tc.args });
       let result;
       try {
@@ -126,4 +127,40 @@ function forcedTool(q) {
   return null;
 }
 
-module.exports = { run, ctx: null, forcedTool };
+// Champions named in the question, in order ("Thresh için ... karşıda Zed Jinx").
+async function champsIn(text) {
+  const data = require('./data.js');
+  const d = await data.dd();
+  const low = ' ' + String(text || '').toLowerCase().replace(/[^a-z0-9ğüşöçı' ]/gi, ' ') + ' ';
+  const hits = [];
+  for (const c of Object.values(d.champs)) {
+    for (const n of new Set([c.name, c.id])) {
+      const re = new RegExp(`[^a-z]${n.toLowerCase().replace(/[^a-z0-9]+/g, "[ '.]*")}[^a-z]`);
+      const m = low.match(re);
+      if (m) { hits.push({ name: c.name, at: m.index }); break; }
+    }
+  }
+  return hits.sort((a, b) => a.at - b.at).map((h) => h.name);
+}
+
+// Small models call build / item tools without the champions the user named:
+// fill them in from the question.
+async function fillFromQuestion(name, args, q) {
+  if (name === 'recommend_items' && !(args.enemies && args.enemies.length)) {
+    const champs = await champsIn(q);
+    if (champs.length) {
+      const mineMatch = String(q).match(/([a-zçğıöşü' .]+?)\s+(için|ile oynuyorum|oynuyorum)|\bfor\s+([a-z' .]+?)[,?]|\bas\s+([a-z' .]+)/i);
+      const mineText = mineMatch ? (mineMatch[1] || mineMatch[3] || mineMatch[4] || '') : '';
+      const mine = args.myChampion || (await champsIn(mineText))[0] || (champs.length > 1 ? champs[0] : '');
+      const enemies = champs.filter((c) => c !== mine);
+      return { ...args, ...(mine ? { myChampion: mine } : {}), ...(enemies.length ? { enemies } : {}) };
+    }
+  }
+  if (name === 'champion_build' && !args.champion) {
+    const champs = await champsIn(q);
+    if (champs.length) return { ...args, champion: champs[0] };
+  }
+  return args;
+}
+
+module.exports = { run, ctx: null, forcedTool, champsIn, fillFromQuestion };
