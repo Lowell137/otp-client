@@ -15,7 +15,7 @@
   const h = document.createElement('header');
   h.id = 'otp-shell-header';
   h.innerHTML = `<ul>
-    <li class="left"><a class="brand" data-go="home" title="onetricks.gg"><img src="assets/logo.png" alt=""><b>OTP</b></a></li>
+    <li class="left"><a class="brand" data-go="home" title="onetricks.gg"><img class="ic" src="assets/ot-logo-icon.png" alt=""><img class="wm" src="assets/ot-logo-text.svg" alt="ONETRICKS.GG"></a></li>
     <li class="mid"><div class="sw">
       <input id="otp-shell-search" type="text" placeholder="Search Champion Builds…" autocomplete="off" spellcheck="false">
       <div id="otp-shell-sugg" role="listbox"></div>
@@ -87,6 +87,40 @@
     if (el) { e.preventDefault(); go(shown[Number(el.dataset.i)]); }
   });
   input.addEventListener('blur', () => setTimeout(() => box.classList.remove('open'), 100));
+})();
+
+// Current-champion chip next to the logo: during champion select or a game it shows
+// the champion you picked (or are hovering) and takes you back to its build (your
+// lane; vs your lane opponent once the game is on). State: preload 'otp-lobby-state'.
+(function () {
+  const left = document.querySelector('#otp-shell-header .left');
+  if (!left) return;
+  const chip = document.createElement('a');
+  chip.id = 'otp-champ-chip';
+  left.appendChild(chip);
+  let url = '';
+  chip.addEventListener('click', (e) => { e.preventDefault(); if (url) chip.dispatchEvent(new CustomEvent('otp-go-build', { bubbles: true, detail: url })); });
+  const champName = (id) => {
+    try { const c = JSON.parse(localStorage.getItem('otp.shell.champs2') || 'null'); const x = c && c.list.find((k) => k.id === id); if (x) return x; } catch {}
+    return { id, name: id, icon: '' };
+  };
+  window.addEventListener('otp-lobby-state', (e) => {
+    let st = null;
+    try { st = JSON.parse(e.detail || 'null'); } catch {}
+    const me = st && st.me;
+    if (!me || !me.champ) { chip.classList.remove('show'); url = ''; return; }
+    const role = me.role || '';
+    const opp = st.phase === 'InGame' && role ? (st.enemies || []).find((p) => p.role === role && p.champ) : null;
+    const q = new URLSearchParams();
+    if (opp) q.set('matchup', opp.champ);
+    if (role) q.set('role', role);
+    url = `/champions/builds/${me.champ}${q.toString() ? '?' + q : ''}`;
+    const c = champName(me.champ);
+    const icon = c.icon || '';
+    chip.innerHTML = `<span class="dot"></span>${icon ? `<img src="${icon}" alt="">` : ''}<span class="nm">${c.name}</span><span class="st">${st.phase === 'InGame' ? (opp ? 'vs ' + champName(opp.champ).name : 'In game') : 'Champ select'}</span>`;
+    chip.title = `Back to the ${c.name} build`;
+    chip.classList.add('show');
+  });
 })();
 
 // Window moving for local pages (no CSS drag region, see shell.css): press on empty

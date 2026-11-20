@@ -53,15 +53,17 @@ body {
 }
 #otp-shell-header ul {
   list-style: none; margin: 0; height: 56px; display: flex; align-items: center;
-  padding: 0 142px 0 24px; /* right: native min/max/close */
+  padding: 0 142px 0 20px; /* left: same as the site's logo; right: native min/max/close */
 }
 #otp-shell-header a, #otp-shell-header button, #otp-shell-header input { -webkit-app-region: no-drag; }
 #otp-shell-header .left, #otp-shell-header .right { flex: 1; display: flex; align-items: center; min-width: 0; }
 #otp-shell-header .right { justify-content: flex-end; }
 #otp-shell-header .mid { flex: none; }
-#otp-shell-header .brand { display: flex; align-items: center; gap: 8px; color: var(--text); text-decoration: none; cursor: pointer; }
-#otp-shell-header .brand img { width: 36px; height: 36px; border-radius: 8px; display: block; }
-#otp-shell-header .brand b { font-family: "OTP Montserrat", sans-serif; font-size: 21px; font-weight: 800; letter-spacing: .04em; line-height: 24px; }
+/* Same logo as onetricks.gg: 36 px icon + the site's wordmark SVG (black art,
+   inverted to white exactly like the site does). */
+#otp-shell-header .brand { display: flex; align-items: center; color: var(--text); text-decoration: none; cursor: pointer; }
+#otp-shell-header .brand .ic { width: 36px; height: 36px; display: block; }
+#otp-shell-header .brand .wm { width: 175px; height: 24px; display: block; filter: invert(1); }
 #otp-shell-search {
   width: 30vw; max-width: 420px; min-width: 200px; height: 36px; box-sizing: border-box;
   background: #2c2f31 no-repeat 10px 50% / 16px 16px;
@@ -79,7 +81,7 @@ body {
 #otp-shell-header .nav a.on { font-weight: 700; color: #fff; }
 #otp-shell-header .nav a.icon svg { width: 17px; height: 17px; display: block; }
 @media (max-width: 1367.98px) { #otp-shell-header .nav a.wide { display: none; } }
-@media (max-width: 760px) { #otp-shell-header .brand b { display: none; } }
+@media (max-width: 760px) { #otp-shell-header .brand .wm { display: none; } }
 
 /* Page scrollbar: thin, and its track starts below the 56 px header so it never
    runs under the window's min/max/close buttons. */
@@ -125,3 +127,14 @@ html::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.28); }
 *::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: transparent; }
 *::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
 *::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.28); }
+
+/* Current-champion chip next to the logo (champion select / in game). */
+#otp-champ-chip { display: none; align-items: center; gap: 7px; margin-left: 18px; padding: 4px 11px 4px 8px; height: 32px; box-sizing: border-box;
+  background: rgba(44,46,47,.85); border: 1px solid var(--border-light); border-radius: 999px; color: var(--text); text-decoration: none;
+  font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; -webkit-app-region: no-drag; }
+#otp-champ-chip.show { display: inline-flex; }
+#otp-champ-chip:hover { background: var(--hover); border-color: var(--border); }
+#otp-champ-chip img { width: 22px; height: 22px; border-radius: 50%; display: block; }
+#otp-champ-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: #2fb96b; box-shadow: 0 0 0 3px rgba(47,185,107,.18); flex: none; }
+#otp-champ-chip .st { color: var(--lightText); font-weight: 500; font-size: 12px; }
+@media (max-width: 1100px) { #otp-champ-chip .st { display: none; } }

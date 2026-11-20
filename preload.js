@@ -883,6 +883,7 @@ function mountUI() {
   mountSearchPanel();
   if (otpPro === null) checkPro(); else applyPro();
   maybeAutoMatchup();
+  injectSiteNav();
 }
 
 // ---- Instant Auto-Import on any rune / set / filter selection ----
@@ -1299,7 +1300,7 @@ function onLobbyClick(e) {
     lobbyGo(lobbyBuildUrl(p));
   }
 }
-ipcRenderer.on('otp:lobby-state', (_e, s) => { lobbyState = s; renderLobbyPanel(); maybeAutoMatchup(); });
+ipcRenderer.on('otp:lobby-state', (_e, s) => { lobbyState = s; renderLobbyPanel(); maybeAutoMatchup(); renderChampChip(); });
 
 // In game, open my champion's build vs my lane opponent once per game (setting
 // "Auto Matchup"). Only on my own champion's page; "All matchups" afterwards
@@ -1716,6 +1717,106 @@ function mountSearchPanel() {
   if (msOpen) msLoad();
 }
 
+// ---- onetricks header: back / forward / reload + current-champion chip ----
+// Next to the site logo. Only on onetricks pages (the local pages have their own
+// header without these buttons). The chip shows the champion you picked or hover in
+// champion select / in game and goes back to its build (your lane; vs your lane
+// opponent in game).
+const SITENAV_CSS = `
+/* Top-left corner of the page, under the header, in the empty left gutter. */
+#otp-hdr-extra{background:transparent !important;border:0 !important;box-shadow:none !important;padding:0 !important;backdrop-filter:none !important;position:fixed;left:16px;top:calc(var(--otp-hh,66px) + 14px);z-index:900;display:flex;flex-direction:column;align-items:flex-start;gap:8px;-webkit-app-region:no-drag}
+@media (max-width:1240px){#otp-hdr-extra{display:none}}
+#otp-sitenav{display:inline-flex;flex-direction:column;align-items:center;gap:2px;-webkit-app-region:no-drag}
+#otp-sitenav .nb{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;color:var(--text,#e8e6e3);cursor:pointer;padding:0;-webkit-app-region:no-drag}
+#otp-sitenav .nb:hover:not(:disabled){background:var(--fg-raised,#2c2e2f)}
+#otp-sitenav .nb:disabled{opacity:.35;cursor:default}
+#otp-sitenav .nb svg{width:16px;height:16px;display:block}
+#otp-chip-wrap{display:inline-flex;align-items:center;margin-left:16px;margin-right:auto;align-self:center;-webkit-app-region:no-drag}
+#otp-champ-chip{display:none;align-items:center;gap:7px;padding:4px 11px 4px 8px;height:32px;box-sizing:border-box;background:var(--fg-raised,#2c2e2f);border:1px solid var(--border-light,#2c2f31);border-radius:999px;color:var(--text,#e8e6e3);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;-webkit-app-region:no-drag}
+#otp-champ-chip.show{display:inline-flex}
+#otp-champ-chip:hover{background:var(--hover,#1b1d1e);border-color:var(--border,#656e73)}
+#otp-champ-chip img{width:22px;height:22px;border-radius:50%;display:block;flex:none}
+#otp-champ-chip .dot{width:7px;height:7px;border-radius:50%;background:#2fb96b;box-shadow:0 0 0 3px rgba(47,185,107,.18);flex:none}
+#otp-champ-chip .st{color:var(--lightText,#c2baaf);font-weight:500;font-size:12px}
+
+`;
+const NAV_ICONS = {
+  back: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg>',
+  forward: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"/></svg>',
+  reload: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.8v2.9h-2.9"/></svg>',
+};
+function injectSiteNav() {
+  const header = document.querySelector('header');
+  if (!header) return;
+  if (!document.getElementById('otp-sitenav-css')) {
+    const st = document.createElement('style');
+    st.id = 'otp-sitenav-css';
+    st.textContent = SITENAV_CSS;
+    document.head.appendChild(st);
+  }
+  const logo = [...header.querySelectorAll('a[href="/"]')].find((a) => a.querySelector('img'));
+  if (!logo) return;
+  let nav = document.getElementById('otp-sitenav');
+  if (!nav) {
+    nav = document.createElement('span');
+    nav.id = 'otp-sitenav';
+    nav.innerHTML = ['back', 'forward', 'reload'].map((k) => `<button type="button" class="nb" data-nav="${k}" title="${{ back: 'Back (Alt+Left)', forward: 'Forward (Alt+Right)', reload: 'Reload (F5)' }[k]}">${NAV_ICONS[k]}</button>`).join('');
+    nav.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-nav]');
+      if (!b || b.disabled) return;
+      e.preventDefault(); e.stopPropagation();
+      try { ipcRenderer.send('otp:nav-' + b.dataset.nav); } catch {}
+    });
+  }
+  let extra = document.getElementById('otp-hdr-extra');
+  if (!extra) { extra = document.createElement('span'); extra.id = 'otp-hdr-extra'; }
+  if (extra.parentElement !== document.body) document.body.appendChild(extra);
+  if (nav.parentElement !== extra) extra.prepend(nav);
+  let chip = document.getElementById('otp-champ-chip');
+  if (!chip) {
+    chip = document.createElement('a');
+    chip.id = 'otp-champ-chip';
+    chip.href = 'javascript:void(0)';
+    chip.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); const u = chip.dataset.url; if (u) lobbyGo(u); });
+  }
+  let wrap = document.getElementById('otp-chip-wrap');
+  if (!wrap) { wrap = document.createElement('span'); wrap.id = 'otp-chip-wrap'; }
+  // Inner pages keep the logo in a plain block <li>; make it a row so the chip
+  // sits next to the logo instead of under it.
+  const lp = logo.parentElement;
+  if (lp && lp.tagName === 'LI' && getComputedStyle(lp).display !== 'flex') { lp.style.display = 'flex'; lp.style.alignItems = 'center'; }
+  if (logo.nextElementSibling !== wrap) logo.after(wrap);
+  if (chip.parentElement !== wrap) wrap.appendChild(chip);
+  renderChampChip();
+  refreshNavState();
+}
+function refreshNavState() {
+  ipcRenderer.invoke('otp:nav-state').then((s) => {
+    const nav = document.getElementById('otp-sitenav');
+    if (!nav || !s) return;
+    nav.querySelector('[data-nav="back"]').disabled = !s.back;
+    nav.querySelector('[data-nav="forward"]').disabled = !s.forward;
+  }).catch(() => {});
+}
+function renderChampChip() {
+  const chip = document.getElementById('otp-champ-chip');
+  if (!chip) return;
+  const st = lobbyState;
+  const me = st && st.me;
+  if (!me || !me.champ) { chip.classList.remove('show'); chip.dataset.url = ''; return; }
+  const role = me.role || '';
+  const opp = st.phase === 'InGame' && role ? (st.enemies || []).find((p) => p.role === role && p.champ) : null;
+  const q = new URLSearchParams();
+  if (opp) q.set('matchup', opp.champ);
+  if (role) q.set('role', role);
+  chip.dataset.url = `/champions/builds/${encodeURIComponent(me.champ)}${q.toString() ? '?' + q : ''}`;
+  const nm = (k) => (msLookups?.champData?.[k]?.name) || k;
+  chip.innerHTML = `<span class="dot"></span><img src="${lobbyIcon(me.champ)}" alt=""><span class="nm">${lobbyEsc(nm(me.champ))}</span><span class="st">${st.phase === 'InGame' ? (opp ? 'vs ' + lobbyEsc(nm(opp.champ)) : 'In game') : 'Champ select'}</span>`;
+  chip.title = `Back to the ${nm(me.champ)} build`;
+  chip.classList.add('show');
+}
+window.addEventListener('popstate', () => setTimeout(refreshNavState, 50));
+
 // ---- Lifecycle & Observers ----
 // contextBridge must be called synchronously at top-level
 contextBridge.exposeInMainWorld('otp', { parseBuild, doImport });
@@ -1770,9 +1871,10 @@ window.addEventListener('DOMContentLoaded', () => {
     const needsLobby = isBuild && !!lobbyState && !document.getElementById("otp-lobby");
     const msEl = document.getElementById("otp-msearch");
     const msCard = isBuild && siteFilterCard();
+    const needsNav = !!document.querySelector("header") && !document.getElementById("otp-sitenav");
     const needsSearch = isBuild && (!msEl || (msCard && (msCard.nextElementSibling !== msEl || !document.getElementById("otp-ms-toggle"))));
     if (otpPro !== true && !window._otpProRaf) window._otpProRaf = requestAnimationFrame(() => { window._otpProRaf = 0; applyPro(); });
-    if (needsHeader || needsFloat || needsTier || needsLobby || needsSearch) requestMountUI(80);
+    if (needsHeader || needsFloat || needsTier || needsLobby || needsSearch || needsNav) requestMountUI(80);
 
     // Also remove Get Pro button if it reappears
     const getProBtn = document.querySelector('a.get-pro-btn, .get-pro-btn');

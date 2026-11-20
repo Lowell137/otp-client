@@ -798,9 +798,21 @@ app.whenReady().then(async () => {
   });
   ipcMain.on('otp:win-close', () => { if (win && !win.isDestroyed()) win.close(); });
   ipcMain.handle('otp:win-is-max', () => (win && !win.isDestroyed()) ? win.isMaximized() : false);
-  ipcMain.on('otp:nav-back', () => { if (win && !win.isDestroyed() && view.webContents.canGoBack()) view.webContents.goBack(); });
-  ipcMain.on('otp:nav-forward', () => { if (win && !win.isDestroyed() && view.webContents.canGoForward()) view.webContents.goForward(); });
+  // Back / forward / reload buttons in the onetricks header (preload.js). Leaving
+  // the site for a local page needs clearSiteDrag first (see loadLocal).
+  ipcMain.on('otp:nav-back', () => { const wc = win && !win.isDestroyed() && view.webContents; if (wc && wc.canGoBack()) clearSiteDrag(wc).then(() => wc.goBack()); });
+  ipcMain.on('otp:nav-forward', () => { const wc = win && !win.isDestroyed() && view.webContents; if (wc && wc.canGoForward()) clearSiteDrag(wc).then(() => wc.goForward()); });
   ipcMain.on('otp:nav-reload', () => { if (win && !win.isDestroyed()) view.webContents.reload(); });
+  ipcMain.handle('otp:nav-state', () => {
+    const wc = win && !win.isDestroyed() && view.webContents;
+    return wc ? { back: wc.canGoBack(), forward: wc.canGoForward() } : { back: false, forward: false };
+  });
+  // Current-champion chip on local pages: open a build path on the site.
+  ipcMain.on('otp:go-build', (_e, p) => {
+    if (!win || win.isDestroyed()) return;
+    const s = String(p || '');
+    if (/^\/champions\/builds\/[A-Za-z]+(\?[A-Za-z0-9=&]*)?$/.test(s)) win.webContents.loadURL('https://www.onetricks.gg' + s);
+  });
 
   // Wallpapers page: champion list and each champion's skins (Data Dragon).
   ipcMain.handle('otp:wall-champs', async () => {

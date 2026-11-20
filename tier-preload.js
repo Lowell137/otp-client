@@ -407,3 +407,8 @@ const fwdUpdate = (s) => { try { window.dispatchEvent(new CustomEvent('otp-updat
 ipcRenderer.on('otp:update-state', (_e, s) => fwdUpdate(s));
 window.addEventListener('DOMContentLoaded', () => { ipcRenderer.invoke('otp:update-get').then(fwdUpdate).catch(() => {}); });
 window.addEventListener('otp-update-install', () => ipcRenderer.send('otp:update-install'));
+// Current-champion chip in the shell header (shell.js): lobby state in, build path out.
+const fwdLobby = (st) => { try { window.dispatchEvent(new CustomEvent('otp-lobby-state', { detail: JSON.stringify(st || null) })); } catch {} };
+ipcRenderer.on('otp:lobby-state', (_e, st) => fwdLobby(st));
+window.addEventListener('DOMContentLoaded', () => { ipcRenderer.invoke('otp:lobby-get').then(fwdLobby).catch(() => {}); });
+window.addEventListener('otp-go-build', (e) => ipcRenderer.send('otp:go-build', String(e.detail || '')));
