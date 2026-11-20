@@ -1328,7 +1328,7 @@ function renderLobbyPanel() {
       <div class="lb-stat">${lobbyStatText(p)}</div>
     </div>`;
   };
-  const hiddenAllies = (st.allies || []).some((a) => a.hidden && !a.me);
+  const hiddenAllies = st.phase === 'ChampSelect' && (st.allies || []).some((a) => a.hidden && !a.me);
   const oppOn = opp && curMatchup === opp.champ.toLowerCase();
   panel.innerHTML = `
     <div class="lb-head">

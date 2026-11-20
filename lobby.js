@@ -110,7 +110,7 @@ function createLobbyWatch({ getCreds, request, champIdToName, liveGet, send }) {
 
   async function enrich(creds, p) {
     const champ = p.champId ? await champIdToName(p.champId) : null;
-    const base = { me: !!p.me, bot: !!p.bot, hidden: !p.puuid && !p.bot, name: p.name || '', tag: p.tag || '', champ, role: normRole(p.role), guess: !!p.guess, rank: null, recent: null };
+    const base = { me: !!p.me, bot: !!p.bot, hidden: !p.puuid && !p.bot && !p.name, name: p.name || '', tag: p.tag || '', champ, role: normRole(p.role), guess: !!p.guess, rank: null, recent: null };
     if (!p.puuid) return base;
     try {
       const info = await playerInfo(creds, p.puuid);
@@ -164,22 +164,30 @@ function createLobbyWatch({ getCreds, request, champIdToName, liveGet, send }) {
     let list = null;
     try { list = await liveGet('/liveclientdata/playerlist', 1500); } catch {}
     if (Array.isArray(list) && list.length) {
+      // In ranked the LCU session often has no names, so match players by
+      // champion (unique in a game) first, then by name; still unknown players are
+      // looked up by Riot ID (live API has it) for rank and history.
       const lcuByName = new Map([...one, ...two].filter((p) => p.name).map((p) => [p.name.toLowerCase(), p]));
+      const lcuByChamp = new Map([...one, ...two].filter((p) => p.champId && p.puuid).map((p) => [Number(p.champId), p]));
       const myName = String(me.gameName || me.displayName || '').toLowerCase();
       const nameOf = (x) => String(x.riotIdGameName || (x.riotId || '').split('#')[0] || x.summonerName || '');
       const meRow = list.find((x) => nameOf(x).toLowerCase() === myName) || list.find((x) => !x.isBot);
       const myTeam = meRow ? meRow.team : 'ORDER';
       const rows = await Promise.all(list.map(async (x) => {
         const nm = nameOf(x);
-        const l = lcuByName.get(nm.toLowerCase());
         const key = String(x.rawChampionName || '').split('_').pop();
+        const cid = await champKeyToId(key);
+        const l = lcuByChamp.get(cid) || lcuByName.get(nm.toLowerCase());
+        const tag = x.riotIdTagLine || (x.riotId || '').split('#')[1] || (l && l.tag) || '';
+        let puuid = x.isBot ? '' : (l && l.puuid) || (x === meRow ? me.puuid : '');
+        if (!puuid && !x.isBot && nm && tag) puuid = await puuidByRiotId(creds, nm, tag);
         return {
           me: x === meRow,
           bot: !!x.isBot,
-          puuid: x.isBot ? '' : (l ? l.puuid : (x === meRow ? me.puuid : '')),
+          puuid,
           name: x.isBot ? '' : nm,
-          tag: x.isBot ? '' : (x.riotIdTagLine || (x.riotId || '').split('#')[1] || (l && l.tag) || ''),
-          champId: (l && l.champId) || await champKeyToId(key),
+          tag: x.isBot ? '' : tag,
+          champId: (l && l.champId) || cid,
           role: x.position || (l && l.role) || '',
         };
       }));
@@ -187,6 +195,23 @@ function createLobbyWatch({ getCreds, request, champIdToName, liveGet, send }) {
     }
     const mineIsOne = one.some((p) => p.me);
     return { phase: 'InGame', mine: mineIsOne ? one : two, theirs: mineIsOne ? two : one };
+  }
+
+  // Riot ID -> puuid through the client (cached for the session).
+  const ridCache = new Map();
+  async function puuidByRiotId(creds, name, tag) {
+    const k = (name + '#' + tag).toLowerCase();
+    if (ridCache.has(k)) return ridCache.get(k);
+    let puuid = '';
+    for (const url of [
+      `/lol-summoner/v1/alias/lookup?gameName=${encodeURIComponent(name)}&tagLine=${encodeURIComponent(tag)}`,
+      `/lol-summoner/v1/summoners?name=${encodeURIComponent(name + '#' + tag)}`,
+    ]) {
+      try { const j = await lcu(creds, url); puuid = (j && (j.puuid || (Array.isArray(j) && j[0] && j[0].puuid))) || ''; } catch {}
+      if (puuid) break;
+    }
+    ridCache.set(k, puuid);
+    return puuid;
   }
 
   // Champion key ("KogMaw") -> numeric id from Data Dragon; the live API names
