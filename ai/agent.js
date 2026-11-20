@@ -120,6 +120,7 @@ function forcedTool(q) {
   const role = (ROLE_WORDS.find(([, re]) => re.test(t)) || [])[0];
   if (/(\bbot(u|unu|lar|ları|lari)\b|boots|savunma|defansif|defensive|karşı.*(al|item|eşya)|(item|eşya).*karşı|anti.?heal)/i.test(t)) return { name: 'recommend_items', args: {} };
   if (/(item|eşya|build|rün|rune|starter|başlangıç|ilk .*al|ne al|alay[ıi]m|almal[ıi]|skill|yetenek sıra|spell|büyü)/i.test(t)) return { name: 'champion_build', args: {} };
+  if (/((karakter|şampiyon|champ\w*).*(öner|seç)|(öner|suggest|recommend).*(karakter|şampiyon|champ|pick)|ne (oynay|seçey)|what should i (play|pick))/i.test(t)) return { name: 'suggest_pick', args: role ? { role } : {} };
   if (/(tier|meta|en güçlü|en iyi|strongest|best|op olan|güçlü)/i.test(t)) return { name: 'tier_list', args: role ? { role } : {} };
   if (/(patch|yama|nerf|buff)/i.test(t)) return { name: 'patch_notes', args: {} };
   return null;
