@@ -20,6 +20,7 @@
       "lcu.js",
       "lcu-creds.js",
       "lobby.js",
+      "postgame.js",
       "tier-preload.js",
       "tierlist.html",
       "summoner-preload.js",
@@ -52,6 +53,12 @@
         "owner": "Lowell137",
         "repo": "otp-client",
         "releaseType": "release"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "build/otp-watch.exe",
+        "to": "otp-watch.exe"
       }
     ]
   },

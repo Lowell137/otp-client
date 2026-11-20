@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, screen, dialog, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, screen, dialog } = require('electron');
 const path = require('path');
 
 // Disable transparent window hardware acceleration issues on Windows that can freeze DWM / DirectX
@@ -8,16 +8,16 @@ let win = null;
 let overlayWin = null;
 
 // ---- Start with League (Settings) ----
-// On: the app is registered to start hidden at Windows sign-in (BG_ARG), watches for
-// the League client and shows its window when the client starts. Closing the window
-// then only hides it (tray icon: Open / Quit), so the next League start shows it again.
-const BG_ARG = '--otp-background';
-const startedInBackground = process.argv.includes(BG_ARG);
+// On: a tiny watcher (build/otp-watch.cs, a few MB in memory) is registered to run
+// at Windows sign-in and started right away. It starts OTP Client when the League
+// client starts. The app itself is never added to Windows startup and quits
+// normally when closed. (0.1.15/0.1.16 registered the whole app hidden at sign-in;
+// that entry is removed on every start.)
+const WATCH_NAME = 'OTP Client League Watch';
 let quitting = false;
-let tray = null;
 let autoStartApplied = null;
 // One instance (installed app only, so a dev run can sit next to it): a second
-// launch brings the running window back instead.
+// launch (e.g. by the watcher) brings the running window back instead.
 const gotLock = !app.isPackaged || app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 app.on('second-instance', () => showMain());
@@ -36,54 +36,35 @@ function prepareUpdateRestart() {
   try { if (overlayWin && !overlayWin.isDestroyed()) overlayWin.destroy(); } catch {}
   try { if (win && !win.isDestroyed()) { win.hide(); win.webContents.session.flushStorageData(); } } catch {}
 }
-function autoStartOn() { return !!readState().autoStart; }
 function showMain() {
   if (!win || win.isDestroyed()) return;
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
 }
-function ensureTray() {
-  if (tray) return;
-  try {
-    tray = new Tray(path.join(__dirname, 'assets/icon.ico'));
-    tray.setToolTip('OTP Client');
-    tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'Open OTP Client', click: showMain },
-      { type: 'separator' },
-      { label: 'Quit', click: () => { quitting = true; app.quit(); } },
-    ]));
-    tray.on('click', showMain);
-  } catch (e) { console.warn('[otp] tray:', e?.message || e); tray = null; }
+function watcherPath() {
+  return app.isPackaged ? path.join(process.resourcesPath, 'otp-watch.exe') : path.join(__dirname, 'build', 'otp-watch.exe');
+}
+// Old versions put the app itself in Windows startup ("electron.app.OTP Client").
+function removeOldAppStartup() {
+  if (!app.isPackaged) return;
+  try { app.setLoginItemSettings({ openAtLogin: false }); } catch {}
 }
 function applyAutoStart(on) {
   if (autoStartApplied === on) return;
   autoStartApplied = on;
   const st = readState();
   if (!!st.autoStart !== on) { st.autoStart = on; writeState(st); }
-  if (app.isPackaged) {
-    try { app.setLoginItemSettings({ openAtLogin: on, path: process.execPath, args: [BG_ARG] }); } catch {}
+  if (!app.isPackaged) return; // dev: never touch Windows startup
+  const w = watcherPath();
+  const { spawn, execFile } = require('child_process');
+  try { app.setLoginItemSettings({ openAtLogin: on, path: w, args: [process.execPath], name: WATCH_NAME }); } catch (e) { console.warn('[otp] login item:', e?.message || e); }
+  if (on) {
+    // Start watching now too; the watcher exits by itself if one is already running.
+    try { spawn(w, [process.execPath], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); } catch (e) { console.warn('[otp] watcher:', e?.message || e); }
+  } else {
+    execFile('taskkill', ['/IM', 'otp-watch.exe', '/F'], { windowsHide: true }, () => {});
   }
-  if (on) ensureTray();
-  else if (tray) { tray.destroy(); tray = null; }
-}
-// Show the window when the League client starts (or is already running when we
-// were started hidden at sign-in).
-function startLeagueWatch() {
-  const { execFile } = require('child_process');
-  let was = null;
-  setInterval(() => {
-    if (!autoStartOn()) { was = null; return; }
-    execFile('tasklist', ['/FI', 'IMAGENAME eq LeagueClientUx.exe', '/NH'], { windowsHide: true }, (err, out) => {
-      const running = !err && /LeagueClientUx\.exe/i.test(out || '');
-      const started = running && (was === false || (was === null && startedInBackground));
-      if (started && win && !win.isDestroyed() && !win.isVisible()) {
-        console.log('[otp] League client started: showing the window');
-        showMain();
-      }
-      was = running;
-    });
-  }, 5000);
 }
 
 
@@ -176,6 +157,9 @@ let champDebounceTimer = null;
 const flags = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, overlay: false, flashSlot: 'D' };
 
 let lobbyWatch = null;
+let postGame = null;
+ipcMain.handle('otp:postgame-get', () => (postGame ? postGame.current() : null));
+ipcMain.on('otp:postgame-dismiss', (_e, id) => { if (postGame) postGame.dismiss(id); });
 ipcMain.handle('otp:lobby-get', () => (lobbyWatch ? lobbyWatch.current() : null));
 
 function startLcuLoops() {
@@ -357,7 +341,7 @@ async function createWindow() {
     height: 860,
     minWidth: 900,
     minHeight: 560,
-    show: !startedInBackground,
+    show: true,
     autoHideMenuBar: true,
     backgroundColor: '#181a1b',
     icon: path.join(__dirname, 'assets/icon.ico'),
@@ -389,13 +373,7 @@ async function createWindow() {
   });
 
   win.once('ready-to-show', () => {
-    if (!startedInBackground) win.show();
-  });
-  // Start with League on: closing hides to the tray instead of quitting.
-  win.on('close', (e) => {
-    if (quitting || !autoStartOn()) return;
-    e.preventDefault();
-    win.hide();
+    win.show();
   });
 
   // Hide the Electron tag: some WAFs challenge non-standard UAs (error pages in-app while fetch works)
@@ -852,8 +830,8 @@ function showWhatsNew() {
 app.whenReady().then(async () => {
   if (!gotLock) return;
   await createWindow();
-  if (autoStartOn()) ensureTray();
-  startLeagueWatch();
+  removeOldAppStartup();
+  if (readState().autoStart) { autoStartApplied = null; applyAutoStart(true); }
   setupAutoUpdate();
   whatsNewPending = computeWhatsNew();
   // Navigating away drops the pop-up (and its pending promise); show it again on the next page.
@@ -872,6 +850,16 @@ app.whenReady().then(async () => {
     send: (st) => { if (win && !win.isDestroyed()) win.webContents.send('otp:lobby-state', st); },
   });
   lobbyWatch.start();
+  // Post-game card (build page): result, LP change, stats and items vs the OTP build.
+  postGame = require('./postgame.js').createPostGameWatch({
+    getCreds: () => require('./lcu.js').getCreds(),
+    request: (...a) => require('league-connect').request(...a),
+    champIdToName,
+    getLobby: () => (lobbyWatch ? lobbyWatch.current() : null),
+    readState, writeState,
+    send: (c) => { if (win && !win.isDestroyed()) win.webContents.send('otp:postgame', c); },
+  });
+  postGame.start();
   startLiveClientLoop();
   // Pre-warm champion and ddragon caches in background for instant lookup
   champIdToName(1).catch(() => {});

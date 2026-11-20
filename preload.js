@@ -723,7 +723,7 @@ function buildSettingsPopover() {
         <span>Auto Matchup (Lane Opponent)</span>
         <span class="otp-sw"></span>
       </div>
-      <div class="otp-switch-row" data-k="autoStart" title="Starts hidden with Windows and opens when the League client starts; closing keeps it in the tray">
+      <div class="otp-switch-row" data-k="autoStart" title="Opens OTP Client when the League client starts (a tiny watcher, a few MB, runs in the background)">
         <span>Start with League</span>
         <span class="otp-sw"></span>
       </div>
