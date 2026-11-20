@@ -832,7 +832,9 @@ function toggleMatchExpand(mi) {
   const box = document.getElementById('otp-mexp-' + mi);
   const m = lastDlRes?._view?.[mi];
   if (!box || !m?.teams?.length) return;
-  if (box.style.display !== 'none') { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const row = document.querySelector('.otp-mrow[data-mi="' + mi + '"]');
+  if (box.style.display !== 'none') { box.style.display = 'none'; box.innerHTML = ''; row?.classList.remove('open'); return; }
+  row?.classList.add('open');
   const prof = lastDlRes?.profile || {};
   const me = m.teams.find((t) => String(t.name).toLowerCase() === String(prof.name || '').toLowerCase() && String(t.tag || '').toLowerCase() === String(prof.tag || '').toLowerCase());
   const order = me ? [me.side, me.side === 'BLUE' ? 'RED' : 'BLUE'] : ['BLUE', 'RED'];

@@ -1063,9 +1063,9 @@
   .otp-pw-head span:not(:first-child), .otp-pw-row span:not(:first-child) { text-align: right; }
   .otp-pw-row { padding: 5px 4px; border-top: 1px solid rgba(255,255,255,.04); color: #e8e6e3; }
   .otp-pw-row .who { display: flex; align-items: center; gap: 7px; min-width: 0; cursor: pointer; }
-  .otp-pw-row .who .nm { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+  .otp-pw-row .who .nm { display: flex; align-items: baseline; gap: 4px; min-width: 0; line-height: 1.2; }
   .otp-pw-row .who .nm b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .otp-pw-row .who .nm em { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .otp-pw-row .who .nm em { font-size: 10.5px; white-space: nowrap; flex: none; }
   .otp-pw-row .who:hover b { color: #6cb2ff; }
   .otp-pw-row .who img { width: 22px; height: 22px; border-radius: 50%; flex: none; }
   .otp-pw-row .who em { font-style: normal; color: #8f96a3; font-weight: 400; }
@@ -1163,6 +1163,8 @@
   .otp-m-teams .tm .otp-plink:hover { color: #6cb2ff; }
   .otp-m-teams .tm.me span { color: #fff; font-weight: 800; }
   .otp-m-chev { color: #f0505a; align-self: end; }
+  .otp-m-chev svg { display: block; transition: transform .15s; }
+  .otp-mrow.big.open .otp-m-chev svg { transform: rotate(180deg); }
   .otp-mrow.big.win .otp-m-chev { color: #4c97ff; }
   @media (max-width: 1100px) { .otp-mrow.big { grid-template-columns: 104px minmax(250px, 1fr) 76px 16px; } .otp-mrow.big .otp-m-teams { display: none; } }
 </style>
