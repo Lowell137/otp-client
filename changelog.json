@@ -1,5 +1,19 @@
 [
   {
+    "version": "0.1.12",
+    "date": "2026-11-20",
+    "items": [
+      [
+        "Cleaner scrollbars",
+        "Scrollbars have no background anymore and start below the header, so they stay clear of the window buttons."
+      ],
+      [
+        "Same look everywhere",
+        "Tier List, Summoner, Wallpapers and their inner lists use the same thin scrollbar."
+      ]
+    ]
+  },
+  {
     "version": "0.1.11",
     "date": "2026-11-19",
     "items": [
