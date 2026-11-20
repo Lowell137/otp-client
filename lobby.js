@@ -61,6 +61,44 @@ function createLobbyWatch({ getCreds, request, champIdToName, liveGet, send }) {
     return out;
   }
 
+  // Lane guesses for players without a known lane (enemies in champion select,
+  // blind pick, bots): each champion's play rate per position (Meraki
+  // championrates.json, refreshed daily), then the assignment of the free lanes
+  // with the highest total play rate, so two players never share a guess.
+  let rates = null, ratesTs = 0;
+  async function loadRates() {
+    if (rates && Date.now() - ratesTs < 24 * 3600 * 1000) return rates;
+    try {
+      const r = await fetch('https://cdn.merakianalytics.com/riot/lol/resources/latest/en-US/championrates.json');
+      if (r.ok) { rates = (await r.json()).data || {}; ratesTs = Date.now(); }
+    } catch {}
+    return rates || {};
+  }
+  const POS = { top: 'TOP', jungle: 'JUNGLE', mid: 'MIDDLE', bot: 'BOTTOM', supp: 'UTILITY' };
+  async function guessRoles(players) {
+    if (!players || !players.length) return;
+    const taken = new Set(players.map((p) => normRole(p.role)).filter(Boolean));
+    const free = Object.keys(POS).filter((r) => !taken.has(r));
+    const open = players.filter((p) => !normRole(p.role));
+    if (!open.length || !free.length) return;
+    const rt = await loadRates();
+    const rate = (p, r) => (p.champId && rt[p.champId] ? (rt[p.champId][POS[r]]?.playRate || 0) : 0);
+    let best = null, bestScore = -1;
+    const perm = (i, used, acc, score) => {
+      if (i === open.length) { if (score > bestScore) { bestScore = score; best = acc.slice(); } return; }
+      for (const r of free) {
+        if (used.has(r)) continue;
+        used.add(r); acc.push(r);
+        perm(i + 1, used, acc, score + rate(open[i], r));
+        used.delete(r); acc.pop();
+      }
+      if (open.length > free.length) { acc.push(''); perm(i + 1, used, acc, score); acc.pop(); }
+    };
+    perm(0, new Set(), [], 0);
+    if (!best || bestScore <= 0) return;
+    open.forEach((p, i) => { if (best[i] && rate(p, best[i]) > 0) { p.role = best[i]; p.guess = true; } });
+  }
+
   function recentFor(info, champId) {
     const total = info.games.length;
     const on = info.games.filter((g) => g.champId === champId);
@@ -72,7 +110,7 @@ function createLobbyWatch({ getCreds, request, champIdToName, liveGet, send }) {
 
   async function enrich(creds, p) {
     const champ = p.champId ? await champIdToName(p.champId) : null;
-    const base = { me: !!p.me, bot: !!p.bot, hidden: !p.puuid && !p.bot, name: p.name || '', tag: p.tag || '', champ, role: normRole(p.role), rank: null, recent: null };
+    const base = { me: !!p.me, bot: !!p.bot, hidden: !p.puuid && !p.bot, name: p.name || '', tag: p.tag || '', champ, role: normRole(p.role), guess: !!p.guess, rank: null, recent: null };
     if (!p.puuid) return base;
     try {
       const info = await playerInfo(creds, p.puuid);
@@ -176,6 +214,8 @@ function createLobbyWatch({ getCreds, request, champIdToName, liveGet, send }) {
         if (phase === 'ChampSelect') raw = await fromChampSelect(creds);
         else if (phase === 'InProgress' || phase === 'GameStart' || phase === 'Reconnect') raw = await fromGame(creds);
         if (raw) {
+          await guessRoles(raw.mine);
+          await guessRoles(raw.theirs);
           const allies = await Promise.all(raw.mine.map((p) => enrich(creds, p)));
           const enemies = await Promise.all(raw.theirs.map((p) => enrich(creds, p)));
           const me = allies.find((p) => p.me) || {};

@@ -1220,15 +1220,77 @@ function lobbyBuildUrl(params) {
 }
 function lobbyGo(url) { if (url && url !== location.pathname + location.search) location.assign(url); }
 
+// ---- Lobby role picker: guessed lanes (main/lobby.js) can be corrected by hand ----
+// Overrides are kept per champion and side for the current session; picking a
+// lane swaps it with whoever had it, so a team never shows a lane twice.
+let roleOv = (() => { try { return JSON.parse(sessionStorage.getItem('otp.roleOv') || '{}'); } catch { return {}; } })();
+function saveRoleOv() { try { sessionStorage.setItem('otp.roleOv', JSON.stringify(roleOv)); } catch {} }
+function applyTeamOv(list, side) {
+  const out = (list || []).map((p) => ({ ...p }));
+  for (const p of out) {
+    const k = side + '|' + p.champ;
+    if (!p.champ || !roleOv[k] || roleOv[k] === p.role) continue;
+    const want = roleOv[k];
+    const other = out.find((q) => q !== p && q.role === want);
+    if (other) { other.role = p.role; other.guess = true; }
+    p.role = want;
+    p.guess = false;
+    p.picked = true;
+  }
+  return out;
+}
+// lobbyState with the user's lane picks applied (and "me" following them).
+function lobbyEff() {
+  const st = lobbyState;
+  if (!st) return st;
+  const allies = applyTeamOv(st.allies, 'a');
+  const enemies = applyTeamOv(st.enemies, 'e');
+  const me = allies.find((p) => p.me);
+  return { ...st, allies, enemies, me: { ...(st.me || {}), role: (me && me.role) || st.me?.role || '' } };
+}
+let rolePop = null;
+function openRolePicker(btn) {
+  rolePop?.remove();
+  const side = btn.dataset.side, champ = btn.dataset.champ;
+  rolePop = document.createElement('div');
+  rolePop.id = 'otp-rolepop';
+  rolePop.innerHTML = LOBBY_ROLES.map((r) => `<div data-r="${r}">${ROLE_LABEL[r]}</div>`).join('') + '<div data-r="" class="auto">Auto</div>';
+  document.body.appendChild(rolePop);
+  const b = btn.getBoundingClientRect();
+  rolePop.style.left = Math.round(b.left + window.scrollX) + 'px';
+  rolePop.style.top = Math.round(b.bottom + window.scrollY + 4) + 'px';
+  rolePop.addEventListener('mousedown', (e) => {
+    const d = e.target.closest('[data-r]');
+    if (!d) return;
+    e.preventDefault(); e.stopPropagation();
+    const k = side + '|' + champ;
+    if (d.dataset.r) roleOv[k] = d.dataset.r; else delete roleOv[k];
+    saveRoleOv();
+    rolePop.remove(); rolePop = null;
+    renderLobbyPanel(); renderChampChip();
+  });
+}
+document.addEventListener('mousedown', (e) => { if (rolePop && !e.target.closest('#otp-rolepop')) { rolePop.remove(); rolePop = null; } }, true);
+const ROLEPICK_CSS = `
+#otp-lobby .lb-role{background:transparent;border:1px solid transparent;border-radius:6px;padding:3px 0;font:inherit;font-size:11px;font-weight:600;color:var(--lightText,#c2baaf);cursor:pointer;width:100%}
+#otp-lobby .lb-role:hover{border-color:var(--border,#656e73);color:#fff}
+#otp-lobby .lb-role.guess{color:#8f96a3;border-style:dashed;border-color:#2c2f31}
+#otp-lobby .lb-role.picked{color:#8cc0f5}
+#otp-rolepop{position:absolute;z-index:3000;background:#212324;border:1px solid #2c2f31;border-radius:8px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.45);font-size:12.5px;color:#e8e6e3;min-width:70px}
+#otp-rolepop div{padding:5px 10px;border-radius:6px;cursor:pointer}
+#otp-rolepop div:hover{background:#2c2e2f}
+#otp-rolepop .auto{color:#8f96a3;border-top:1px solid #2c2f31;margin-top:2px}
+`;
+
 function renderLobbyPanel() {
   const isBuild = location.pathname.includes('/champions/builds/');
   let panel = document.getElementById('otp-lobby');
-  const st = lobbyState;
+  const st = lobbyEff();
   if (!isBuild || !st || !(st.allies?.length || st.enemies?.length)) { panel?.remove(); return; }
   if (!document.getElementById('otp-lobby-css')) {
     const s = document.createElement('style');
     s.id = 'otp-lobby-css';
-    s.textContent = LOBBY_CSS;
+    s.textContent = LOBBY_CSS + ROLEPICK_CSS;
     document.head.appendChild(s);
   }
   // Above the champion header card (the rounded card that holds the page's <h1>).
@@ -1260,7 +1322,7 @@ function renderLobbyPanel() {
       : `<div class="lb-name">${lobbyEsc(p.name)}${p.tag ? `<span class="tag"> #${lobbyEsc(p.tag)}</span>` : ''}</div>`;
     const vs = side === 'enemy' && p.champ ? ` data-vs="${lobbyEsc(p.champ)}" title="${on ? 'Showing this matchup' : 'Build vs ' + lobbyEsc(p.champ)}"` : '';
     return `<div class="lb-row${p.me ? ' me' : ''}${on ? ' on' : ''}"${vs}>
-      <div class="lb-role">${ROLE_LABEL[p.role] || ''}</div>
+      <button class="lb-role${p.guess ? ' guess' : ''}${p.picked ? ' picked' : ''}" data-rolepick="1" data-side="${side === 'enemy' ? 'e' : 'a'}" data-champ="${lobbyEsc(p.champ || '')}" title="${p.guess ? 'Guessed lane: click to change' : 'Click to change the lane'}">${ROLE_LABEL[p.role] || '—'}${p.guess ? '?' : ''}</button>
       ${p.champ ? `<img class="lb-ic" src="${lobbyIcon(p.champ)}" alt="">` : '<div class="lb-ic none"></div>'}
       <div class="lb-who">${name}<div class="lb-rank">${p.hidden || p.bot ? '' : lobbyRankText(p.rank)}</div></div>
       <div class="lb-stat">${lobbyStatText(p)}</div>
@@ -1286,11 +1348,13 @@ function renderLobbyPanel() {
 }
 
 function onLobbyClick(e) {
+  const rp = e.target.closest('[data-rolepick]');
+  if (rp) { e.preventDefault(); e.stopPropagation(); if (rp.dataset.champ) openRolePicker(rp); return; }
   const t = e.target.closest('[data-vs],[data-adv],[data-clear]');
   if (!t) return;
   e.preventDefault();
   e.stopPropagation();
-  const st = lobbyState || {};
+  const st = lobbyEff() || {};
   const role = st.me?.role || '';
   if (t.dataset.clear) { lobbyGo(lobbyBuildUrl({})); return; }
   if (t.dataset.vs) {
@@ -1313,7 +1377,7 @@ ipcRenderer.on('otp:lobby-state', (_e, s) => { lobbyState = s; renderLobbyPanel(
 // "Auto Matchup"). Only on my own champion's page; "All matchups" afterwards
 // sticks because the same game/opponent is not applied twice.
 function maybeAutoMatchup() {
-  const st = lobbyState;
+  const st = lobbyEff();
   if (!settings.autoMatchup || !st || st.phase !== 'InGame') return;
   const champ = lobbyChampOfPage();
   if (!champ || !st.me?.champ || champ.toLowerCase() !== st.me.champ.toLowerCase()) return;
@@ -1846,7 +1910,7 @@ function refreshNavState() {
 function renderChampChip() {
   const chip = document.getElementById('otp-champ-chip');
   if (!chip) return;
-  const st = lobbyState;
+  const st = lobbyEff();
   const me = st && st.me;
   if (!me || !me.champ) { chip.classList.remove('show'); chip.dataset.url = ''; return; }
   const role = me.role || '';
