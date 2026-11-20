@@ -1058,12 +1058,15 @@
   .otp-pw-tabs { display: flex; gap: 6px; margin: 2px 0 8px; }
   .otp-pw-tabs button { flex: 1; background: transparent; border: 1px solid #2c2f31; color: #c2baaf; border-radius: 8px; padding: 5px 0; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
   .otp-pw-tabs button.on { background: #1063b7; border-color: #1063b7; color: #fff; }
-  .otp-pw-head, .otp-pw-row { display: grid; grid-template-columns: minmax(0,1fr) 42px 42px 38px; gap: 6px; align-items: center; font-size: 12px; }
+  .otp-pw-head, .otp-pw-row { display: grid; grid-template-columns: minmax(0,1fr) 34px 38px 36px; gap: 6px; align-items: center; font-size: 12px; }
   .otp-pw-head { color: #8f96a3; font-size: 11px; padding: 0 4px 4px; }
   .otp-pw-head span:not(:first-child), .otp-pw-row span:not(:first-child) { text-align: right; }
   .otp-pw-row { padding: 5px 4px; border-top: 1px solid rgba(255,255,255,.04); color: #e8e6e3; }
-  .otp-pw-row .who { display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; font-weight: 600; }
-  .otp-pw-row .who:hover { color: #6cb2ff; }
+  .otp-pw-row .who { display: flex; align-items: center; gap: 7px; min-width: 0; cursor: pointer; }
+  .otp-pw-row .who .nm { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+  .otp-pw-row .who .nm b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .otp-pw-row .who .nm em { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .otp-pw-row .who:hover b { color: #6cb2ff; }
   .otp-pw-row .who img { width: 22px; height: 22px; border-radius: 50%; flex: none; }
   .otp-pw-row .who em { font-style: normal; color: #8f96a3; font-weight: 400; }
   .otp-pw-row .up { color: #10b981; font-weight: 700; }

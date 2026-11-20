@@ -1218,7 +1218,7 @@ function paintPlayedWith() {
     + (list.length
       ? `<div class="otp-pw-head"><span>Summoner</span><span>Games</span><span>W-L</span><span>WR</span></div>` + list.map((e) => {
         const wr = Math.round((e.wins / e.games) * 100);
-        return `<div class="otp-pw-row"><span class="who otp-plink" data-name="${esc(e.name)}" data-tag="${esc(e.tag)}" title="Open profile"><img src="${e.icon}" alt="">${esc(e.name)}<em>#${esc(e.tag)}</em></span><span>${e.games}</span><span>${e.wins}-${e.games - e.wins}</span><span class="${wr >= 55 ? 'up' : wr <= 45 ? 'down' : ''}">${wr}%</span></div>`;
+        return `<div class="otp-pw-row"><span class="who otp-plink" data-name="${esc(e.name)}" data-tag="${esc(e.tag)}" title="${esc(e.name)} #${esc(e.tag)}: open profile"><img src="${e.icon}" alt=""><span class="nm"><b>${esc(e.name)}</b><em>#${esc(e.tag)}</em></span></span><span>${e.games}</span><span>${e.wins}-${e.games - e.wins}</span><span class="${wr >= 55 ? 'up' : wr <= 45 ? 'down' : ''}">${wr}%</span></div>`;
       }).join('')
       : `<div class="otp-serr" style="padding:10px;">Nobody twice in the last ${n} games</div>`);
   box.querySelectorAll('[data-pw]').forEach((b) => { b.onclick = () => { pwTab = b.dataset.pw; paintPlayedWith(); }; });
