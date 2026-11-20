@@ -1238,14 +1238,16 @@ function renderLobbyPanel() {
 
   const row = (p, side) => {
     const on = side === 'enemy' && p.champ && p.champ.toLowerCase() === curMatchup;
-    const name = p.hidden
+    const name = p.bot
+      ? '<div class="lb-name hidden">Bot</div>'
+      : p.hidden
       ? `<div class="lb-name hidden">${p.me ? 'You' : 'Hidden in champ select'}</div>`
       : `<div class="lb-name">${lobbyEsc(p.name)}${p.tag ? `<span class="tag"> #${lobbyEsc(p.tag)}</span>` : ''}</div>`;
     const vs = side === 'enemy' && p.champ ? ` data-vs="${lobbyEsc(p.champ)}" title="${on ? 'Showing this matchup' : 'Build vs ' + lobbyEsc(p.champ)}"` : '';
     return `<div class="lb-row${p.me ? ' me' : ''}${on ? ' on' : ''}"${vs}>
       <div class="lb-role">${ROLE_LABEL[p.role] || ''}</div>
       ${p.champ ? `<img class="lb-ic" src="${lobbyIcon(p.champ)}" alt="">` : '<div class="lb-ic none"></div>'}
-      <div class="lb-who">${name}<div class="lb-rank">${p.hidden ? '' : lobbyRankText(p.rank)}</div></div>
+      <div class="lb-who">${name}<div class="lb-rank">${p.hidden || p.bot ? '' : lobbyRankText(p.rank)}</div></div>
       <div class="lb-stat">${lobbyStatText(p)}</div>
     </div>`;
   };

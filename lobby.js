@@ -72,7 +72,7 @@ function createLobbyWatch({ getCreds, request, champIdToName, liveGet, send }) {
 
   async function enrich(creds, p) {
     const champ = p.champId ? await champIdToName(p.champId) : null;
-    const base = { me: !!p.me, hidden: !p.puuid, name: p.name || '', tag: p.tag || '', champ, role: normRole(p.role), rank: null, recent: null };
+    const base = { me: !!p.me, bot: !!p.bot, hidden: !p.puuid && !p.bot, name: p.name || '', tag: p.tag || '', champ, role: normRole(p.role), rank: null, recent: null };
     if (!p.puuid) return base;
     try {
       const info = await playerInfo(creds, p.puuid);
@@ -120,17 +120,49 @@ function createLobbyWatch({ getCreds, request, champIdToName, liveGet, send }) {
     });
     const one = (gd.teamOne || []).map(conv);
     const two = (gd.teamTwo || []).map(conv);
+    // The game's own Live Client API lists all ten players with team and lane (the
+    // LCU session leaves out bots, e.g. Practice Tool / Co-op). Build the roster
+    // from it and take puuids (for rank and history) from the LCU session.
+    let list = null;
+    try { list = await liveGet('/liveclientdata/playerlist', 1500); } catch {}
+    if (Array.isArray(list) && list.length) {
+      const lcuByName = new Map([...one, ...two].filter((p) => p.name).map((p) => [p.name.toLowerCase(), p]));
+      const myName = String(me.gameName || me.displayName || '').toLowerCase();
+      const nameOf = (x) => String(x.riotIdGameName || (x.riotId || '').split('#')[0] || x.summonerName || '');
+      const meRow = list.find((x) => nameOf(x).toLowerCase() === myName) || list.find((x) => !x.isBot);
+      const myTeam = meRow ? meRow.team : 'ORDER';
+      const rows = await Promise.all(list.map(async (x) => {
+        const nm = nameOf(x);
+        const l = lcuByName.get(nm.toLowerCase());
+        const key = String(x.rawChampionName || '').split('_').pop();
+        return {
+          me: x === meRow,
+          bot: !!x.isBot,
+          puuid: x.isBot ? '' : (l ? l.puuid : (x === meRow ? me.puuid : '')),
+          name: x.isBot ? '' : nm,
+          tag: x.isBot ? '' : (x.riotIdTagLine || (x.riotId || '').split('#')[1] || (l && l.tag) || ''),
+          champId: (l && l.champId) || await champKeyToId(key),
+          role: x.position || (l && l.role) || '',
+        };
+      }));
+      return { phase: 'InGame', mine: rows.filter((_, i) => list[i].team === myTeam), theirs: rows.filter((_, i) => list[i].team !== myTeam) };
+    }
     const mineIsOne = one.some((p) => p.me);
-    const res = { phase: 'InGame', mine: mineIsOne ? one : two, theirs: mineIsOne ? two : one };
-    // Live Client Data (in game) knows every player's lane; fill missing roles.
-    try {
-      const list = await liveGet('/liveclientdata/playerlist', 1500);
-      const byName = new Map(list.map((x) => [String(x.riotIdGameName || (x.riotId || '').split('#')[0] || x.summonerName || '').toLowerCase(), x.position]));
-      for (const p of [...res.mine, ...res.theirs]) {
-        if (!p.role && p.name) p.role = byName.get(p.name.toLowerCase()) || '';
-      }
-    } catch {}
-    return res;
+    return { phase: 'InGame', mine: mineIsOne ? one : two, theirs: mineIsOne ? two : one };
+  }
+
+  // Champion key ("KogMaw") -> numeric id from Data Dragon; the live API names
+  // champions by key.
+  let keyToId = null;
+  async function champKeyToId(key) {
+    if (!keyToId) {
+      try {
+        const v = (await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json')).json())[0];
+        const d = (await (await fetch(`https://ddragon.leagueoflegends.com/cdn/${v}/data/en_US/champion.json`)).json()).data;
+        keyToId = new Map(Object.values(d).map((c) => [c.id.toLowerCase(), Number(c.key)]));
+      } catch { return 0; }
+    }
+    return keyToId.get(String(key || '').toLowerCase()) || 0;
   }
 
   async function tick() {
@@ -147,6 +179,13 @@ function createLobbyWatch({ getCreds, request, champIdToName, liveGet, send }) {
           const allies = await Promise.all(raw.mine.map((p) => enrich(creds, p)));
           const enemies = await Promise.all(raw.theirs.map((p) => enrich(creds, p)));
           const me = allies.find((p) => p.me) || {};
+          // No lane for me (Practice Tool, blind pick): if the others cover four
+          // different lanes, mine is the one left.
+          if (me.me && !me.role) {
+            const taken = new Set(allies.filter((p) => !p.me && p.role).map((p) => p.role));
+            const left = ['top', 'jungle', 'mid', 'bot', 'supp'].filter((r) => !taken.has(r));
+            if (taken.size === 4 && left.length === 1) me.role = left[0];
+          }
           raw = { phase: raw.phase, me: { champ: me.champ || null, role: me.role || '' }, allies, enemies };
         }
       } catch { raw = null; }
@@ -158,6 +197,8 @@ function createLobbyWatch({ getCreds, request, champIdToName, liveGet, send }) {
     const j = JSON.stringify(state);
     if (j === lastJson) return;
     lastJson = j;
+    if (state) console.log(`[otp] lobby ${state.phase}: me=${state.me.champ || "-"}/${state.me.role || "-"} allies=${state.allies.map((p) => (p.champ || "?") + (p.hidden ? "(hidden)" : p.rank ? "(" + p.rank.tier + ")" : "")).join(",")} enemies=${state.enemies.map((p) => (p.champ || "?") + (p.role ? "@" + p.role : "") + (p.rank ? "(" + p.rank.tier + ")" : "")).join(",")}`);
+    else console.log("[otp] lobby: none");
     send(state);
   }
 
