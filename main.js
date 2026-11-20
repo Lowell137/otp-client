@@ -21,7 +21,21 @@ let autoStartApplied = null;
 const gotLock = !app.isPackaged || app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 app.on('second-instance', () => showMain());
-app.on('before-quit', () => { quitting = true; });
+app.on('before-quit', () => {
+  quitting = true;
+  // Update restart: leave at once. The silent installer (already spawned by
+  // electron-updater) waits 1-3 s and force-kills if "OTP Client.exe" is still
+  // running, so a normal multi-process shutdown only made the restart slower.
+  if (updatingNow) setImmediate(() => app.exit(0));
+});
+let updatingNow = false;
+// Before quitAndInstall: hide everything right away (instant feedback) and flush
+// cookies / storage, since app.exit skips the normal shutdown.
+function prepareUpdateRestart() {
+  updatingNow = true;
+  try { if (overlayWin && !overlayWin.isDestroyed()) overlayWin.destroy(); } catch {}
+  try { if (win && !win.isDestroyed()) { win.hide(); win.webContents.session.flushStorageData(); } } catch {}
+}
 function autoStartOn() { return !!readState().autoStart; }
 function showMain() {
   if (!win || win.isDestroyed()) return;
@@ -734,7 +748,7 @@ ipcMain.handle('otp:update-check', async () => {
   try { await updater.checkForUpdates(); } catch (e) { setUpdState({ state: 'error', message: String(e?.message || e).slice(0, 120) }); }
   return updState;
 });
-ipcMain.on('otp:update-install', () => { if (updater && updState.state === 'ready') setImmediate(() => updater.quitAndInstall(true, true)); });
+ipcMain.on('otp:update-install', () => { if (updater && updState.state === 'ready') { prepareUpdateRestart(); setImmediate(() => updater.quitAndInstall(true, true)); } });
 
 function setupAutoUpdate() {
   if (!app.isPackaged) {
@@ -782,7 +796,7 @@ function setupAutoUpdate() {
       defaultId: 0,
       cancelId: 1,
     });
-    if (response === 0) setImmediate(() => autoUpdater.quitAndInstall(true, true));
+    if (response === 0) { prepareUpdateRestart(); setImmediate(() => autoUpdater.quitAndInstall(true, true)); }
   });
   const check = () => autoUpdater.checkForUpdates().catch((e) => console.warn('[otp] update check failed:', e?.message || e));
   setTimeout(check, 5000);
