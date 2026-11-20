@@ -969,6 +969,13 @@ header>ul{padding-right:142px !important;box-sizing:border-box}
    so pin it and push the page down by its height (--otp-hh, set by syncCaption). */
 header[class*="layout_headerTop"]{position:fixed !important;top:0 !important;left:0 !important;right:0 !important;z-index:1000 !important}
 body:has(header[class*="layout_headerTop"]){padding-top:var(--otp-hh,66px) !important}
+/* Page scrollbar: no track background, and the track starts below the header so it
+   never runs under the window's caption buttons (same as the local pages). */
+html::-webkit-scrollbar{width:10px !important;background:transparent !important}
+html::-webkit-scrollbar-track{background:transparent !important;margin-top:var(--otp-hh,66px) !important}
+html::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16) !important;border-radius:10px !important;border:2px solid transparent !important;background-clip:padding-box !important}
+html::-webkit-scrollbar-thumb:hover{background-color:rgba(255,255,255,.28) !important}
+html::-webkit-scrollbar-corner{background:transparent !important}
 #ad-slot,[id="ad-slot"],.vm-placement,[class*="vm-placement"],.ad-slot,.square-ad,.ad-md,.ad-lg,.ad-sidePanel,[class*="ad-leftSidePanel"],[class*="ad-rightSidePanel"],ins.adsbygoogle,iframe[src*="safeframe"],iframe[id^="google_ads"],[id^="div-gpt-ad"],[class*="pw-tag"],[id*="pw-oop"]{display:none !important;height:0 !important;min-height:0 !important;max-height:0 !important;margin:0 !important;padding:0 !important;opacity:0 !important;pointer-events:none !important;visibility:hidden !important;}
 `;
 

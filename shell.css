@@ -83,7 +83,8 @@ body {
 
 /* Page scrollbar: thin, and its track starts below the 56 px header so it never
    runs under the window's min/max/close buttons. */
-html::-webkit-scrollbar { width: 10px; }
+html::-webkit-scrollbar { width: 10px; background: transparent; }
+html::-webkit-scrollbar-corner { background: transparent; }
 html::-webkit-scrollbar-track { background: transparent; margin-top: 56px; }
 html::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
 html::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.28); }
@@ -118,3 +119,9 @@ html::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.28); }
 #otp-upd-ring.ready .bar { stroke: #3fb950; }
 #otp-upd-ring.checking .bar { stroke-dasharray: 30 200 !important; animation: otpspin 1s linear infinite; transform-origin: 50% 50%; }
 @keyframes otpspin { to { transform: rotate(360deg); } }
+
+/* Inner scroll areas (wallpaper lists, saved strip, …) use the same thin, trackless bar. */
+*::-webkit-scrollbar { width: 8px; height: 8px; background: transparent; }
+*::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: transparent; }
+*::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.28); }
