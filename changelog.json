@@ -1,5 +1,35 @@
 [
   {
+    "version": "0.1.14",
+    "date": "2026-11-20",
+    "items": [
+      [
+        "Lobby panel",
+        "In champion select and in game, the build page shows both teams: rank, win rate on their pick over the last 20 games, and OTP / 1st time badges. Click an enemy for the build vs that champion."
+      ],
+      [
+        "Your lane, your opponent",
+        "Champion select opens the build for your assigned lane. In game, Auto Matchup (Settings) switches to the build vs your lane opponent."
+      ],
+      [
+        "Match Search",
+        "Filter recent high-elo games by lane opponent, laning at 15, runes, spells, items, game length, rank, region and result. Button on the filter row."
+      ],
+      [
+        "Back to your champion",
+        "A chip next to the logo shows your pick (and your opponent once known); click it to get back to the build."
+      ],
+      [
+        "Back, forward, reload",
+        "Navigation buttons in the top-left corner of onetricks pages."
+      ],
+      [
+        "Cleaner pages",
+        "onetricks Pro-only parts are hidden unless your account has Pro, and the Tier List / Summoner / Wallpapers pages use the onetricks logo."
+      ]
+    ]
+  },
+  {
     "version": "0.1.13",
     "date": "2026-11-20",
     "items": [
