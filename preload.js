@@ -1733,10 +1733,10 @@ function mountSearchPanel() {
 // opponent in game).
 const SITENAV_CSS = `
 /* Top-left corner of the page, under the header, in the empty left gutter. */
-#otp-hdr-extra{background:transparent !important;border:0 !important;box-shadow:none !important;padding:0 !important;backdrop-filter:none !important;position:fixed;left:10px;top:calc(var(--otp-hh,66px) + 14px);z-index:900;display:flex;flex-direction:column;align-items:flex-start;gap:8px;-webkit-app-region:no-drag}
+#otp-hdr-extra{background:transparent !important;border:0 !important;box-shadow:none !important;padding:0 !important;backdrop-filter:none !important;position:fixed;left:8px;top:calc(var(--otp-hh,66px) + 14px);z-index:900;display:flex;flex-direction:column;align-items:flex-start;gap:8px;-webkit-app-region:no-drag}
 @media (max-width:1240px){#otp-hdr-extra{display:none}}
-#otp-sitenav{display:inline-flex;flex-direction:row;align-items:center;gap:4px;-webkit-app-region:no-drag}
-#otp-sitenav .nb{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;color:var(--text,#e8e6e3);cursor:pointer;padding:0;-webkit-app-region:no-drag}
+#otp-sitenav{display:inline-flex;flex-direction:row;align-items:center;gap:3px;-webkit-app-region:no-drag}
+#otp-sitenav .nb{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;color:var(--text,#e8e6e3);cursor:pointer;padding:0;-webkit-app-region:no-drag}
 #otp-sitenav .nb:hover:not(:disabled){background:var(--fg-raised,#2c2e2f)}
 #otp-sitenav .nb:disabled{opacity:.35;cursor:default}
 #otp-sitenav .nb svg{width:16px;height:16px;display:block}
@@ -1799,7 +1799,35 @@ function injectSiteNav() {
   if (chip.parentElement !== wrap) wrap.appendChild(chip);
   renderChampChip();
   refreshNavState();
+  placeSiteNav();
 }
+// Keep the top-left buttons off page content: aligned with the first content row,
+// hidden when there is less than 12 px between them and the content.
+function placeSiteNav() {
+  const extra = document.getElementById('otp-hdr-extra');
+  if (!extra) return;
+  const hh = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--otp-hh')) || 66;
+  let top = hh + 24;
+  extra.style.top = top + 'px';
+  for (let i = 0; i < 4; i++) {
+    const r = extra.getBoundingClientRect();
+    if (!r.width) return;
+    let hit = null;
+    for (const y of [r.top + 2, r.top + r.height / 2, r.bottom - 2]) {
+      for (const el of document.elementsFromPoint(r.right + 12, y)) {
+        if (el === document.documentElement || el === document.body || extra.contains(el)) continue;
+        const er = el.getBoundingClientRect();
+        // Real content (a card/chip), not a full-width background or page wrapper.
+        if (er.width < 420 && er.height < 200 && er.left < r.right + 14) { hit = er; break; }
+      }
+      if (hit) break;
+    }
+    extra.style.visibility = hit ? 'hidden' : '';
+    if (hit) extra.style.top = (hh + 14) + 'px';
+    return;
+  }
+}
+window.addEventListener('resize', () => { clearTimeout(window._otpNavT); window._otpNavT = setTimeout(placeSiteNav, 150); });
 function refreshNavState() {
   ipcRenderer.invoke('otp:nav-state').then((s) => {
     const nav = document.getElementById('otp-sitenav');
