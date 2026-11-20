@@ -1,0 +1,67 @@
+{
+  "w": [
+    0.04782,
+    -0.01343,
+    0.45665,
+    0.26125,
+    0.07957,
+    0.01906,
+    0.09837,
+    0.04338,
+    0.12967,
+    0.03522,
+    0.05801
+  ],
+  "bias": 0.04784,
+  "keys": [
+    "gold",
+    "goldLate",
+    "level",
+    "kills",
+    "towers",
+    "inhibs",
+    "dragons",
+    "elders",
+    "grubs",
+    "heralds",
+    "barons"
+  ],
+  "trained": "2026-11-20",
+  "patch": "16.23.1",
+  "target": "mix",
+  "games": 300,
+  "check": {
+    "0-10 min": {
+      "rows": 1232,
+      "maeVsDeeplol": 0.037,
+      "aucOurs": 0.72,
+      "aucDeeplol": 0.732,
+      "logLossOurs": 0.646,
+      "logLossDeeplol": 0.66
+    },
+    "10-20 min": {
+      "rows": 2137,
+      "maeVsDeeplol": 0.073,
+      "aucOurs": 0.792,
+      "aucDeeplol": 0.804,
+      "logLossOurs": 0.562,
+      "logLossDeeplol": 0.585
+    },
+    "20-30 min": {
+      "rows": 1789,
+      "maeVsDeeplol": 0.103,
+      "aucOurs": 0.808,
+      "aucDeeplol": 0.836,
+      "logLossOurs": 0.53,
+      "logLossDeeplol": 0.528
+    },
+    "30-+ min": {
+      "rows": 725,
+      "maeVsDeeplol": 0.107,
+      "aucOurs": 0.719,
+      "aucDeeplol": 0.747,
+      "logLossOurs": 0.609,
+      "logLossDeeplol": 0.597
+    }
+  }
+}

@@ -48,11 +48,24 @@
   .sp .h { position: absolute; left: 1px; top: 0; font-size: 8px; font-weight: 800; color: #9fd6ff; text-shadow: 0 0 3px #000; }
 
   #hint { padding: 0 8px 6px; font-size: 10px; color: var(--mute); line-height: 1.35; }
+  /* Win chance (my team), updated every 3 game minutes */
+  #win { display: none; padding: 7px 9px 8px; border-bottom: 1px solid var(--border); }
+  #win.on { display: block; }
+  #win .top { display: flex; align-items: baseline; gap: 6px; }
+  #win .lbl { font-size: 10px; font-weight: 800; letter-spacing: .08em; color: var(--lightText); }
+  #win .pct { margin-left: auto; font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  #win .d { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #win .d.up { color: #3fb950; } #win .d.down { color: #f0505a; }
+  #win .bar { position: relative; height: 5px; margin-top: 6px; border-radius: 3px; background: rgba(240, 80, 90, .55); overflow: hidden; }
+  #win .bar i { position: absolute; inset: 0 auto 0 0; background: #3b8fe3; border-radius: 3px 0 0 3px; transition: width .6s; }
+  #win .next { margin-top: 4px; font-size: 9.5px; color: var(--mute); }
+  #panel.min #win .next { display: none; }
 </style>
 </head>
 <body>
   <div id="panel" class="hidden">
     <div id="head"><span class="t">ENEMY SPELLS</span><span class="clock" id="clock">0:00</span><button id="min" title="Collapse">–</button></div>
+    <div id="win"><div class="top"><span class="lbl">WIN CHANCE</span><span class="d" id="wd"></span><span class="pct" id="wp">–</span></div><div class="bar"><i id="wb" style="width:50%"></i></div><div class="next" id="wn"></div></div>
     <div id="rows"></div>
     <div id="hint">Click = used · Right-click = reset</div>
   </div>
@@ -139,8 +152,14 @@
   function render(payload) {
     const players = (payload && payload.players) || [];
     if (payload && payload.gameTime != null) { gameTime = payload.gameTime; gameTimeAt = performance.now(); }
-    if (!players.length) { panel.classList.add('hidden'); return; }
+    const win = payload && payload.win;
+    if (!players.length && !win) { panel.classList.add('hidden'); return; }
     panel.classList.remove('hidden');
+    paintWin(win);
+    document.querySelector('#head .t').textContent = players.length ? 'ENEMY SPELLS' : 'WIN CHANCE';
+    document.getElementById('win').querySelector('.lbl').style.display = players.length ? '' : 'none';
+    document.getElementById('rows').style.display = players.length ? '' : 'none';
+    document.getElementById('hint').style.display = players.length ? '' : 'none';
     // Rebuild only when the lineup / spells / haste change, so hover states and timers stay.
     const key = JSON.stringify(players.map((p) => [p.id, p.icon, p.spells.map((s) => s.icon + s.cd)]));
     if (key !== lastKey) {
@@ -154,6 +173,27 @@
       [...timers.keys()].forEach((k) => { if (!live.has(k)) timers.delete(k); });
     }
     paint();
+  }
+
+  function paintWin(w) {
+    const box = document.getElementById('win');
+    box.classList.toggle('on', !!w);
+    if (!w) return;
+    const fmtS = (n) => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
+    if (w.pct == null) {
+      document.getElementById('wp').textContent = '–';
+      document.getElementById('wd').textContent = '';
+      document.getElementById('wb').style.width = '50%';
+      document.getElementById('wn').textContent = w.nextIn != null ? `First estimate in ${fmtS(w.nextIn)}` : '';
+      return;
+    }
+    document.getElementById('wp').textContent = w.pct + '%';
+    const d = w.prev == null ? null : w.pct - w.prev;
+    const wd = document.getElementById('wd');
+    wd.textContent = d == null || d === 0 ? '' : (d > 0 ? '▲' : '▼') + Math.abs(d);
+    wd.className = 'd' + (d > 0 ? ' up' : d < 0 ? ' down' : '');
+    document.getElementById('wb').style.width = Math.max(2, Math.min(98, w.pct)) + '%';
+    document.getElementById('wn').textContent = w.nextIn != null ? `Next update in ${fmtS(w.nextIn)}` : '';
   }
 
   // main takes mouse input only while the real cursor is over this rect (polled every

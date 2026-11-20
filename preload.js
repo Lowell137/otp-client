@@ -384,7 +384,7 @@ async function parseBuild() {
 }
 
 // ---- Settings Management ----
-const DEF_SETTINGS = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, autoMatchup: true, autoStart: false, overlay: false, flashSlot: 'D', apiKey: '', region: 'tr1' };
+const DEF_SETTINGS = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, autoMatchup: true, autoStart: false, overlay: false, winChance: false, flashSlot: 'D', apiKey: '', region: 'tr1' };
 let settings = { ...DEF_SETTINGS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('otp.settings') || '{}')); } catch {}
 function saveSettings() {
@@ -737,6 +737,10 @@ function buildSettingsPopover() {
       </div>
       <div class="otp-switch-row" data-k="overlay">
         <span>In-Game Spell Timers</span>
+        <span class="otp-sw"></span>
+      </div>
+      <div class="otp-switch-row" data-k="winChance" title="Estimated win chance in game, every 3 minutes">
+        <span>In-Game Win Chance</span>
         <span class="otp-sw"></span>
       </div>
     </div>

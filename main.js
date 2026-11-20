@@ -167,7 +167,9 @@ async function getRuneIcon(id) {
 let lastSentChamp = null;
 let lastAutoBuildId = null;
 let champDebounceTimer = null;
-const flags = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, overlay: false, flashSlot: 'D' };
+const flags = { follow: true, autoBuild: true, autoAccept: false, autoSpell: true, overlay: false, winChance: false, flashSlot: 'D' };
+// The in-game overlay shows when either part is on: spell timers or win chance.
+const overlayWanted = () => !!(flags.overlay || flags.winChance) || process.env.OTP_OVERLAY_DEMO === '1';
 
 let lobbyWatch = null;
 let postGame = null;
@@ -655,6 +657,29 @@ function demoGameData() {
   };
 }
 
+// Live win chance (winprob.js + winmodel.json, fitted by tools/winrate/fit.js).
+// Worked out every poll, shown in steps of 3 game minutes (from 3:00) with the
+// change since the last step; for my team.
+let winItemValues = null;
+let winShown = null; // { step, pct, prev }
+async function liveWinChance(data) {
+  const wp = require('./winprob.js');
+  const model = require('./winmodel.json');
+  if (!winItemValues) {
+    const base = await ddragonBase();
+    winItemValues = wp.itemValues(await (await fetch(`${base}/data/en_US/item.json`)).json());
+  }
+  const st = wp.fromLiveClient(data, winItemValues);
+  const meName = data.activePlayer?.riotId || data.activePlayer?.summonerName;
+  const me = (data.allPlayers || []).find((p) => (p.riotId || p.summonerName) === meName);
+  const blue = wp.predict(st, model);
+  const pct = Math.round((me?.team === 'CHAOS' ? 1 - blue : blue) * 100);
+  const step = Math.floor(st.t / 3);
+  if (st.t < 3) { winShown = null; return { pct: null, nextIn: Math.ceil((3 - st.t) * 60) }; }
+  if (!winShown || step !== winShown.step) winShown = { step, pct, prev: winShown ? winShown.pct : null };
+  return { pct: winShown.pct, prev: winShown.prev, nextIn: Math.ceil(((step + 1) * 3 - st.t) * 60) };
+}
+
 // Poll the Live Client: auto-show overlay in game, auto-hide when the game ends
 let liveInGame = false;
 let liveDbgCount = 0;
@@ -670,10 +695,12 @@ async function liveTick() {
         console.log(`[otp] liveDBG inGame ov=${!!flags.overlay} win=${overlayWin ? (overlayWin.isDestroyed() ? 'dead' : (overlayWin.isVisible() ? 'visible' : 'hidden')) : 'none'} n=${data.allPlayers.length} enemies=${dbgP.players.length} me=${data.activePlayer?.riotId || data.activePlayer?.summonerName || '?'}`);
       } catch (e) { console.log('[otp] liveDBG payload err: ' + (e?.message || e)); }
     }
-    if (process.env.OTP_NO_OVERLAY === '1' || (!flags.overlay && process.env.OTP_OVERLAY_DEMO !== '1')) { hideOverlay(); return; } // OTP_NO_OVERLAY: dev runs while a game is open
+    if (process.env.OTP_NO_OVERLAY === '1' || !overlayWanted()) { hideOverlay(); return; } // OTP_NO_OVERLAY: dev runs while a game is open
     showOverlay();
     if (overlayWin && !overlayWin.isDestroyed()) {
       const payload = await buildOverlayPayload(data);
+      if (!flags.overlay && process.env.OTP_OVERLAY_DEMO !== '1') payload.players = [];
+      payload.win = flags.winChance || process.env.OTP_OVERLAY_DEMO === '1' ? await liveWinChance(data).catch(() => null) : null;
       overlayWin.webContents.send('otp:overlay-players', payload);
     }
   } catch {
@@ -686,7 +713,7 @@ function startLiveClientLoop() {
   setInterval(liveTick, 3000);
   // Follow the game window quickly (alt-tab, move, resize) between the 3 s data polls.
   setInterval(() => {
-    if (!liveInGame || process.env.OTP_NO_OVERLAY === '1' || (!flags.overlay && process.env.OTP_OVERLAY_DEMO !== '1')) return;
+    if (!liveInGame || process.env.OTP_NO_OVERLAY === '1' || !overlayWanted()) return;
     try { showOverlay(); } catch {}
   }, 300);
 }
@@ -1018,7 +1045,7 @@ app.whenReady().then(async () => {
     Object.assign(flags, s || {});
     if (s && 'autoStart' in s) applyAutoStart(!!s.autoStart);
     lcu.setFlags(flags);
-    if (!flags.overlay) hideOverlay();
+    if (!overlayWanted()) hideOverlay();
   });
   ipcMain.on('otp:open-tier', () => {
     if (!win || win.isDestroyed()) return;
