@@ -397,8 +397,8 @@
   .otp-sum-col-roles {
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    gap: 6px;
+    justify-content: flex-start; /* title at the top, level with "Champion Played" */
+    gap: 12px;
     padding-left: 8px;
     flex: 1;
     min-width: 140px;
@@ -412,7 +412,7 @@
     display: flex;
     align-items: flex-end;
     gap: 8px;
-    height: 48px;
+    height: 58px; /* 36 px bar + label, so tall bars no longer reach the title */
     padding-bottom: 4px;
   }
   .otp-role-bar-wrap {
