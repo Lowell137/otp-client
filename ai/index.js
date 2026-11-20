@@ -26,6 +26,29 @@ function register({ ipcMain, ctx }) {
     catch (e) { return { ok: false, error: String(e?.message || e), models: [] }; }
   });
 
+  // Settings dialog: try a provider config before saving it (lists its models).
+  ipcMain.handle('otp:ai-test', async (_e, draft) => {
+    try {
+      const c = config.load();
+      const tmp = JSON.parse(JSON.stringify(c));
+      if (draft?.provider === 'ollama') {
+        if (draft.ollama?.baseUrl) tmp.ollama.baseUrl = draft.ollama.baseUrl.trim().replace(/\/+$/, '');
+        const p = providers.ollama(tmp);
+        await p.ping();
+        return { ok: true, models: (await p.models()).map((m) => m.id) };
+      }
+      if (typeof draft?.custom?.baseUrl === 'string') tmp.custom.baseUrl = draft.custom.baseUrl.trim().replace(/\/+$/, '');
+      if (draft?.custom?.key) tmp.custom.keyEnc = 'raw:' + Buffer.from(draft.custom.key, 'utf8').toString('base64');
+      const p = providers.openaiCompat(tmp);
+      return { ok: true, models: (await p.models()).map((m) => m.id) };
+    } catch (e) {
+      let msg = String(e?.message || e);
+      if (/401|403|auth/i.test(msg)) msg = 'The server wants an API key (or the key is wrong).';
+      else if (/fetch failed|ECONNREFUSED|timeout/i.test(msg)) msg = 'Nothing answers at that address.';
+      return { ok: false, error: msg };
+    }
+  });
+
   ipcMain.handle('otp:ai-status', async () => {
     const c = config.load();
     const p = providers.current();

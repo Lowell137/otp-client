@@ -7,8 +7,8 @@
 const path = require('path');
 const { WebContentsView } = require('electron');
 
-const MIN_W = 300;
-const DEF_W = 380;
+const MIN_W = 360;
+const DEF_W = 400;
 
 function createSidebar({ getWin, readState, writeState }) {
   let view = null;
