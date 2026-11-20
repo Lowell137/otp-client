@@ -151,3 +151,9 @@ html::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.28); }
 #otp-shell-reglist div { padding: 5px 10px; border-radius: 6px; font-size: 12.5px; cursor: pointer; color: #e8e6e3; }
 #otp-shell-reglist div:hover { background: #2c2e2f; }
 #otp-shell-reglist div.sel { color: #8cc0f5; font-weight: 700; }
+
+/* No saved wallpaper (bg.js): onetricks' own look, plain page and a solid header
+   bar like the site's inner pages. */
+body.otp-plain::before { display: none; }
+body.otp-plain { background: var(--bg) !important; }
+body.otp-plain #otp-shell-header { background: var(--fg); }

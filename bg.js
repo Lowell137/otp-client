@@ -1,9 +1,9 @@
 // Background splash for the local pages (Tier List, Summoner, Wallpapers).
 // Picks one of the user's saved wallpapers (Wallpapers page, localStorage
-// 'otp.wallpapers'); until something is saved, a small hand-picked default set.
+// 'otp.wallpapers'). With none saved the page keeps onetricks' own plain
+// background (body.otp-plain).
 (function () {
   const DD = 'https://ddragon.leagueoflegends.com/cdn/img/champion/splash/';
-  const DEFAULTS = ['Ahri_86', 'Jinx_60', 'Yasuo_77', 'Kaisa_70', 'Akali_60', 'Yone_19', 'Viego_37', 'Seraphine_43', 'Sett_66', 'Lux_70'];
 
   function saved() {
     try {
@@ -48,5 +48,6 @@
   } catch {}
 
   const mine = saved();
-  apply(mine.length ? mine : DEFAULTS);
+  if (mine.length) apply(mine);
+  else document.body.classList.add('otp-plain');
 })();
