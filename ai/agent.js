@@ -17,7 +17,7 @@ async function userContext(ctx) {
   try {
     const lob = ctx.getLobby && ctx.getLobby();
     if (lob && lob.phase) lines.push(`Right now the user is ${lob.phase === 'InGame' ? 'in a game' : 'in champion select'}${lob.me?.champ ? ` on ${lob.me.champ}` : ''}${lob.me?.role ? ` (${lob.me.role})` : ''}.`);
-    else lines.push('Right now the user is not in a game or champion select. Questions about "this game / bu maç" usually mean their last finished game: use last_game.');
+    else lines.push('Right now the user is not in a game or champion select. Questions about "this game / bu maç" usually mean their last finished game: use game_review for mistakes and advice, last_game for items.');
   } catch {}
   return lines.join('\n');
 }
@@ -47,9 +47,12 @@ function systemPrompt(who) {
     "- pro play: esports (a team's results or upcoming matches, a pro player's recent games, a league's schedule).",
     '- counters and matchups ("who counters Yasuo", "Yasuo vs Annie", "is X good against Y"): counters (win rate in the matchup, hardest and easiest opponents). For a matchup question also get champion_build for the build.',
     '- boots and defensive items against the enemy team: recommend_items.',
-    '- review of a finished game ("bu maç ne almalıydım", "what went wrong", "son maçım"): last_game. Compare the items with the enemy team and the recommended build, then give 2-4 concrete points.',
+    '- MY MISTAKES / personal advice from a finished game ("hatalarım", "ne yanlış yaptım", "bu maçı incele", "what went wrong", "review my game", "neden kaybettim", "bana tavsiye ver"): game_review (default: my last game; index 1 = the one before). It returns findings with times, map places and win-chance numbers. Use last_game too when items matter.',
+    '  How to answer a review: talk to the player in second person, like a coach who watched the game. Pick the 2-3 biggest problems from `findings` (the first ones matter most), each with the minutes and the numbers from the data, say WHY it hurt (what the enemy got right after, how much win chance), and what to do differently next game. End with one thing they did well (`strengths`) and one habit to practise. Never invent what you cannot see: the data has no wave state, cooldowns, wards on the map or what the player was thinking, so say "I cannot see X" if the question needs it. A pattern across games needs several games: call game_review with index 0, 1, 2 before saying "you always".',
+    '- items of a finished game ("bu maç ne almalıydım"): last_game. Compare the items with the enemy team and the recommended build, then give 2-4 concrete points.',
     '- who is in my current game: current_game (only during champion select or a game).',
     '- a specific player: player_profile, player_matches. An enemy or ally named by champion ("the enemy Ezreal"): pass that champion.',
+    '- "look at my accounts, what should I play / which roles / champion pool / what to ban": for EVERY account named, player_profile and player_matches with its server (region). Then tier_list for the two roles they play most (banRate) for a ban. Answer: main role + second role, 2 champions per role from their own results (games and win rate), one ban per role, and the main account to focus. Use only numbers from the results.',
     'If a tool returns an error, tell the user plainly what is missing.',
     "Riot's rules: information, builds and analysis (also after a game) are fine. Do not make real-time in-game decisions for the player (when to fight, where the enemy jungler is, ability timers).",
   ].filter((l) => l !== undefined).join('\n');
@@ -66,15 +69,19 @@ async function run({ history, onEvent, signal, model }) {
   const m = model || providers.currentModel();
   const lastUser = [...history].reverse().find((x) => x.role === 'user')?.content || '';
   for (let step = 0; step < MAX_STEPS; step++) {
-    const r = await provider.chat({ messages, tools: list, model: m, signal });
+    // Live text: what the model writes and thinks shows in the panel as it comes.
+    const onDelta = (d) => onEvent({ type: 'live', step, text: d.text, thinking: [...thoughts, d.thinking].filter(Boolean).join('\n\n') });
+    const r = await provider.chat({ messages, tools: list, model: m, signal, onDelta });
     think(r.thinking);
     // A game-fact question answered from memory (no tool at all): run the tool
     // that fits ourselves and make the model answer from its result.
     if (!r.toolCalls.length && step === 0 && !done.size) {
       const forced = forcedTool(lastUser);
-      if (forced && tools.byName(forced.name)) {
-        r.toolCalls = [{ id: `forced_${Date.now()}`, name: forced.name, args: forced.args }];
+      const calls = forced ? (forced.calls || [forced]).filter((c) => tools.byName(c.name)) : [];
+      if (calls.length) {
+        r.toolCalls = calls.map((c, i) => ({ id: `forced_${Date.now()}_${i}`, name: c.name, args: c.args }));
         r.content = '';
+        onEvent({ type: 'live', step, text: '', thinking: thoughts.join('\n\n') });
       }
     }
     if (!r.toolCalls.length) {
@@ -111,7 +118,7 @@ async function run({ history, onEvent, signal, model }) {
   }
   // Out of steps (or looping): ask once more with no tools, so it must answer.
   messages.push({ role: 'user', content: 'Answer my question now using only the tool results above. If they do not contain the answer, say what is missing.' });
-  const fin = await provider.chat({ messages, tools: [], model: m, signal });
+  const fin = await provider.chat({ messages, tools: [], model: m, signal, onDelta: (d) => onEvent({ type: 'live', step: MAX_STEPS, text: d.text, thinking: [...thoughts, d.thinking].filter(Boolean).join('\n\n') }) });
   think(fin.thinking);
   const content = fin.content || 'I could not find an answer to that.';
   onEvent({ type: 'answer', content });
@@ -121,9 +128,42 @@ async function run({ history, onEvent, signal, model }) {
 // Questions that must be answered from live data, by words (Turkish and English).
 // Used only when the model called no tool at all.
 const ROLE_WORDS = [['top', /\btop\b/i], ['jungle', /jungle|ormanc|\bjg\b/i], ['mid', /\bmid\b|orta/i], ['bot', /\badc\b|\bbot\b(?!lar)|bot ?lane|nişanc/i], ['support', /support|\bsup\b|destek/i]];
+// Riot IDs in the question with the server written next to them:
+// "EUW 1braincell#BONK TR Lowell #Néant" -> two accounts, EUW and TR.
+const SERVERS = ['TR', 'EUW', 'EUNE', 'NA', 'KR', 'BR', 'LAN', 'LAS', 'OCE', 'JP', 'RU', 'ME', 'SEA', 'TW', 'VN'];
+function riotIdsIn(q) {
+  const t = String(q || '');
+  const out = [];
+  // One-word names only: a name with spaces can't be told apart from the words
+  // before it; the model passes those itself.
+  const re = /([\p{L}\p{N}_.]{2,16})\s?#\s?([\p{L}\p{N}]{2,5})(?![\p{L}\p{N}])/gu;
+  let m;
+  while ((m = re.exec(t))) {
+    const name = m[1];
+    let region;
+    // A server word right before ("TR Lowell#X") or right after ("Faker#KR1 (KR)").
+    {
+      const before = t.slice(Math.max(0, m.index - 8), m.index).trim().split(/\s+/).pop() || '';
+      if (SERVERS.includes(before.toUpperCase())) region = before.toUpperCase();
+    }
+    if (!region) {
+      const after = t.slice(re.lastIndex, re.lastIndex + 8).trim().split(/[\s,]+/)[0] || '';
+      if (SERVERS.includes(after.replace(/[()]/g, '').toUpperCase())) region = after.replace(/[()]/g, '').toUpperCase();
+    }
+    out.push({ riotId: `${name}#${m[2]}`, ...(region ? { region } : {}) });
+  }
+  return out;
+}
+
 function forcedTool(q) {
   const t = String(q || '');
   const role = (ROLE_WORDS.find(([, re]) => re.test(t)) || [])[0];
+  // Accounts named: look them all up (profile + recent games), whatever was asked.
+  const ids = riotIdsIn(t);
+  // Mistakes / review of a finished game: the timeline review (with an account named: that player's game).
+  const reviewAsk = /(hata|yanl[ıi]ş|mistake|went wrong|review|incele|analiz|neden kaybet|why did i (lose|die)|ne yapmal[ıi]yd[ıi]m|ne yapmal[ıi]yd[ıi]|ki[sş]isel|kendimi geli[sş]|improve|coach)/i.test(t);
+  if (reviewAsk && !/\bbu iki hesab/i.test(t)) return { name: 'game_review', args: ids.length ? ids[0] : {} };
+  if (ids.length) return { calls: ids.flatMap((a) => [{ name: 'player_profile', args: a }, { name: 'player_matches', args: a }]) };
   if (/(\bbot(u|unu|lar|ları|lari)\b|boots|savunma|defansif|defensive|karşı.*(al|item|eşya)|(item|eşya).*karşı|anti.?heal)/i.test(t)) return { name: 'recommend_items', args: {} };
   if (/(espor|esports|\blck\b|\blec\b|\blpl\b|\blcs\b|worlds|\bmsi\b|pro (oyuncu|maç|player|game)|turnuva|tournament)/i.test(t)) return { name: 'esports', args: {} };
   if (/(counter|matchup|eşleşme|\bvs\.?\b|karşı (iyi|güçlü|zayıf|zor|kolay)|(iyi|güçlü|zayıf) mı)/i.test(t)) return { name: 'counters', args: {} };
@@ -175,6 +215,12 @@ async function fillFromQuestion(name, args, q) {
     const role = (ROLE_WORDS.find(([, re]) => re.test(q)) || [])[0];
     if (champs.length) return { ...args, champion: champs[0], ...(champs[1] && !args.opponent ? { opponent: champs[1] } : {}), ...(role && !args.role ? { role } : {}) };
   }
+  if ((name === 'player_profile' || name === 'player_matches') && args.riotId && !args.region) {
+    // The server the user wrote next to this account.
+    const key = (s) => String(s).toLowerCase().replace(/\s+/g, '');
+    const hit = riotIdsIn(q).find((a) => key(a.riotId) === key(args.riotId));
+    if (hit?.region) return { ...args, region: hit.region };
+  }
   if (name === 'champion_build' && !args.champion) {
     const champs = await champsIn(q);
     if (champs.length) return { ...args, champion: champs[0] };
@@ -182,4 +228,4 @@ async function fillFromQuestion(name, args, q) {
   return args;
 }
 
-module.exports = { run, ctx: null, forcedTool, champsIn, fillFromQuestion };
+module.exports = { run, ctx: null, forcedTool, champsIn, fillFromQuestion, riotIdsIn };

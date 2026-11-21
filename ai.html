@@ -59,6 +59,19 @@
   .msg { max-width: 94%; line-height: 1.55; font-size: 13.5px; word-wrap: break-word; }
   .msg.user { align-self: flex-end; background: var(--blue); color: #fff; padding: 8px 12px; border-radius: 12px 12px 3px 12px; white-space: pre-wrap; }
   .msg.bot { align-self: flex-start; }
+  .msg { animation: msgIn .22s ease-out both; }
+  @keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  /* Live status while the answer is on its way: shimmering label + seconds */
+  .live { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--mute); padding: 2px 0 6px; }
+  .live .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line-hi); border-top-color: var(--blue); animation: spin .8s linear infinite; flex: none; }
+  .live .shim { background: linear-gradient(90deg, var(--mute) 0%, var(--mute) 35%, #fff 50%, var(--mute) 65%, var(--mute) 100%); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shim 1.6s linear infinite; }
+  .live .secs { font-variant-numeric: tabular-nums; font-size: 11.5px; opacity: .7; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes shim { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+  .live[hidden] { display: none; }
+  .ans.streaming > :last-child:not(ul):not(ol)::after, .ans.streaming > :is(ul, ol):last-child > li:last-child::after { content: ''; display: inline-block; width: 7px; height: 13px; margin-left: 2px; vertical-align: -2px; background: var(--soft); border-radius: 1px; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .step { animation: msgIn .2s ease-out both; }
   .msg.bot p { margin: 0 0 6px; } .msg.bot p:last-child { margin: 0; }
   .msg.bot ul, .msg.bot ol { margin: 4px 0 6px; padding-left: 20px; }
   .msg.bot code { background: #2c2f31; border-radius: 4px; padding: 1px 5px; font-size: 12px; }
@@ -257,7 +270,7 @@
 
   const TOOL_LABEL = {
     current_game: 'Checking the current game', player_profile: 'Looking up the player', player_matches: 'Reading match history',
-    recommend_items: 'Checking the enemy team', tier_list: 'Reading the tier list', suggest_pick: 'Finding picks', counters: 'Checking matchups', esports: 'Checking pro play', lol_knowledge: 'Reading game notes', last_game: 'Loading the game', duo_synergy: 'Checking duo synergy', champion_build: 'Getting the build', patch_notes: 'Reading patch notes', lol_wiki: 'Searching the wiki', read_page: 'Reading a page',
+    recommend_items: 'Checking the enemy team', tier_list: 'Reading the tier list', suggest_pick: 'Finding picks', counters: 'Checking matchups', esports: 'Checking pro play', lol_knowledge: 'Reading game notes', last_game: 'Loading the game', game_review: 'Reviewing the game', duo_synergy: 'Checking duo synergy', champion_build: 'Getting the build', patch_notes: 'Reading patch notes', lol_wiki: 'Searching the wiki', read_page: 'Reading a page',
   };
   // Start screen: suggestions follow what you are doing (out of game, champion
   // select, in game) and name your champion / lane opponent when known.
@@ -286,7 +299,7 @@
       title: 'Ask about League',
       sub: 'Builds, picks, players, patch changes and reviews of your games, with live data. Add a screenshot with +.',
       chips: [
-        ['Review my last game', 'Review my last game: what should I have bought and done differently?'],
+        ['My mistakes in the last game', 'What mistakes did I make in my last game? Review it like a coach: when, where and what to do differently.'],
         ['Strongest champions right now', 'What are the strongest champions this patch for each role?'],
         ['What changed in the latest patch?', 'What changed in the latest patch?'],
         ['My recent form', 'How have my last 10 games gone?'],
@@ -514,13 +527,51 @@
     send.innerHTML = '<svg width="11" height="11" viewBox="0 0 12 12"><rect width="12" height="12" rx="2" fill="currentColor"/></svg>';
     const bx = document.createElement('div');
     bx.className = 'msg bot';
-    bx.innerHTML = '<div class="steps"></div><div class="typing"><i></i><i></i><i></i></div>';
+    // Live view: status line (what is happening + seconds), thinking (folded),
+    // tool steps, and the answer as it is written.
+    bx.innerHTML = '<details class="think" hidden><summary>Thinking</summary><div></div></details><div class="steps"></div><div class="live"><span class="spin"></span><span class="shim">Thinking</span><span class="secs"></span></div><div class="ans"></div>';
     log.appendChild(bx);
     scroll();
     const steps = bx.querySelector('.steps');
+    const liveEl = bx.querySelector('.live');
+    const ans = bx.querySelector('.ans');
+    const th = bx.querySelector('details.think');
+    const t0 = Date.now();
+    const secs = () => Math.max(1, Math.round((Date.now() - t0) / 1000));
+    const setStatus = (label) => { liveEl.hidden = false; liveEl.querySelector('.shim').textContent = label; };
+    const tick = setInterval(() => { liveEl.querySelector('.secs').textContent = `${Math.round((Date.now() - t0) / 1000)}s`; }, 250);
+    let pending = 0; // tools running
+    let frame = 0, lastLive = null;
+    const drawLive = () => {
+      frame = 0;
+      const ev = lastLive;
+      if (ev.thinking && ev.thinking.trim()) {
+        th.hidden = false;
+        th.querySelector('div').innerHTML = md(ev.thinking);
+        if (!ev.text) th.querySelector('summary').textContent = 'Thinking…';
+      }
+      if (ev.text) {
+        liveEl.hidden = true;
+        ans.classList.add('streaming');
+        ans.innerHTML = md(ev.text);
+      } else if (!pending) {
+        ans.classList.remove('streaming'); ans.innerHTML = '';
+        setStatus(ev.thinking ? 'Thinking' : 'Thinking');
+      }
+      scroll();
+    };
     const onEv = (ev) => {
       if (ev.id !== id) return;
+      if (ev.type === 'live') {
+        lastLive = ev;
+        if (!frame) frame = requestAnimationFrame(drawLive);
+        return;
+      }
       if (ev.type === 'tool') {
+        // Text written before a tool call was a preamble: the real answer comes later.
+        pending++;
+        ans.classList.remove('streaming'); ans.innerHTML = '';
+        setStatus('Looking up data');
         const c = document.createElement('span');
         c.className = 'step';
         c.dataset.name = ev.name;
@@ -531,21 +582,25 @@
       } else if (ev.type === 'tool-done') {
         const c = [...steps.querySelectorAll('.step')].reverse().find((x) => x.dataset.name === ev.name && !x.classList.contains('ok') && !x.classList.contains('bad'));
         if (c) c.classList.add(ev.ok ? 'ok' : 'bad');
+        pending = Math.max(0, pending - 1);
+        if (!pending) setStatus('Writing the answer');
       }
     };
     listeners.add(onEv);
     const r = await window.otpAI.chat({ id, history: send2 });
     listeners.delete(onEv);
-    bx.querySelector('.typing')?.remove();
+    clearInterval(tick);
+    if (frame) cancelAnimationFrame(frame);
+    liveEl.remove();
+    ans.remove();
     const body = document.createElement('div');
     if (r.ok) {
       // Model thinking (reasoning models): folded above the answer, closed by default.
       if (r.thinking && r.thinking.trim()) {
-        const th = document.createElement('details');
-        th.className = 'think';
-        th.innerHTML = `<summary>Thinking</summary><div>${md(r.thinking)}</div>`;
-        bx.insertBefore(th, bx.querySelector('.steps') || null);
-      }
+        th.hidden = false;
+        th.querySelector('div').innerHTML = md(r.thinking);
+        th.querySelector('summary').textContent = `Thought for ${secs()}s`;
+      } else th.remove();
       body.innerHTML = md(r.content);
       history.push({ role: 'assistant', content: r.content });
       persist();

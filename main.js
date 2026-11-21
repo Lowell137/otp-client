@@ -1722,6 +1722,20 @@ app.whenReady().then(async () => {
       return { ok: false, error: String(e?.message ?? e) };
     }
   });
+  // The raw event timeline of one finished game (kills with positions, objectives,
+  // win chance per event) for the assistant's game review. Main process only.
+  ipcMain.handle('otp:deeplol-timeline', async (_e, q) => {
+    const platform = String(q?.platform || 'TR1').toUpperCase();
+    const id = encodeURIComponent(String(q?.matchId || ''));
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const det = JSON.parse(await dlFetchText(`${DL}/match/match-cached?match_id=${id}&platform_id=${platform}`, 8000));
+        return { ok: true, det };
+      } catch (e) { lastErr = e; await new Promise((r) => setTimeout(r, 600 * (attempt + 1))); }
+    }
+    return { ok: false, error: String(lastErr?.message ?? lastErr).slice(0, 80) };
+  });
   // deeplol older matches (pagination for months back)
   ipcMain.handle('otp:deeplol-more', async (_e, q) => {
     try {
