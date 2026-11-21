@@ -43,6 +43,7 @@ function systemPrompt(who) {
     '- recommend a champion to play: suggest_pick. What is strong / meta: tier_list.',
     '- runes, items, spells, skill order for a champion: champion_build.',
     '- best teammate for a champion ("Nami yanına ne alayım"): duo_synergy.',
+    '- counters and matchups ("who counters Yasuo", "Yasuo vs Annie", "is X good against Y"): counters (win rate in the matchup, hardest and easiest opponents). For a matchup question also get champion_build for the build.',
     '- boots and defensive items against the enemy team: recommend_items.',
     '- review of a finished game ("bu maç ne almalıydım", "what went wrong", "son maçım"): last_game. Compare the items with the enemy team and the recommended build, then give 2-4 concrete points.',
     '- who is in my current game: current_game (only during champion select or a game).',
@@ -80,13 +81,14 @@ async function run({ history, onEvent, signal, model }) {
       return { content, thinking: thoughts.join('\n\n'), messages: messages.slice(1) };
     }
     messages.push({ role: 'assistant', content: r.content || '', toolCalls: r.toolCalls });
+    // All tool calls of one step run at the same time (like op.gg's assistant);
+    // results go back in the order the model asked for them.
     let repeats = 0;
-    for (const tc of r.toolCalls) {
+    const results = await Promise.all(r.toolCalls.map(async (tc) => {
       const key = `${tc.name}|${JSON.stringify(tc.args || {})}`;
       if (done.has(key)) {
         repeats++;
-        messages.push({ role: 'tool', toolCallId: tc.id, name: tc.name, content: JSON.stringify({ note: 'You already called this with the same input; the result is above. Do not call it again: answer the user now, or use a different tool.' }) });
-        continue;
+        return { note: 'You already called this with the same input; the result is above. Do not call it again: answer the user now, or use a different tool.' };
       }
       const t = tools.byName(tc.name);
       tc.args = await fillFromQuestion(tc.name, tc.args || {}, lastUser).catch(() => tc.args);
@@ -99,8 +101,9 @@ async function run({ history, onEvent, signal, model }) {
       }
       done.set(key, result);
       onEvent({ type: 'tool-done', name: tc.name, ok: !result?.error });
-      messages.push({ role: 'tool', toolCallId: tc.id, name: tc.name, content: JSON.stringify(result).slice(0, 12000) });
-    }
+      return result;
+    }));
+    r.toolCalls.forEach((tc, i) => messages.push({ role: 'tool', toolCallId: tc.id, name: tc.name, content: JSON.stringify(results[i]).slice(0, 12000) }));
     // Only repeats this round: stop looping and answer from what we have.
     if (repeats === r.toolCalls.length) break;
   }
@@ -120,6 +123,7 @@ function forcedTool(q) {
   const t = String(q || '');
   const role = (ROLE_WORDS.find(([, re]) => re.test(t)) || [])[0];
   if (/(\bbot(u|unu|lar|ları|lari)\b|boots|savunma|defansif|defensive|karşı.*(al|item|eşya)|(item|eşya).*karşı|anti.?heal)/i.test(t)) return { name: 'recommend_items', args: {} };
+  if (/(counter|matchup|eşleşme|\bvs\.?\b|karşı (iyi|güçlü|zayıf|zor|kolay)|(iyi|güçlü|zayıf) mı)/i.test(t)) return { name: 'counters', args: {} };
   if (/(item|eşya|build|rün|rune|starter|başlangıç|ilk .*al|ne al|alay[ıi]m|almal[ıi]|skill|yetenek sıra|spell|büyü)/i.test(t)) return { name: 'champion_build', args: {} };
   if (/((karakter|şampiyon|champ\w*).*(öner|seç)|(öner|suggest|recommend).*(karakter|şampiyon|champ|pick)|ne (oynay|seçey)|what should i (play|pick))/i.test(t)) return { name: 'suggest_pick', args: role ? { role } : {} };
   if (/(tier|meta|en güçlü|en iyi|strongest|best|op olan|güçlü)/i.test(t)) return { name: 'tier_list', args: role ? { role } : {} };
