@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.1.25",
+    "date": "2026-11-21",
+    "items": [
+      [
+        "More providers",
+        "Add as many model providers as you like (Ollama, LM Studio, Unsloth Studio, llama.cpp, OpenRouter or any OpenAI-compatible server) and pick any of their models from one menu."
+      ],
+      [
+        "Ollama setup any time",
+        "\"Set up Ollama\" is now always in the providers screen."
+      ],
+      [
+        "Lighter while playing",
+        "Qwen3.5 4B is the recommended model while gaming, and Ollama frees GPU memory 3 minutes after an answer."
+      ],
+      [
+        "Cleaner panel",
+        "No more strip between the page and the assistant panel."
+      ]
+    ]
+  },
+  {
     "version": "0.1.24",
     "date": "2026-11-21",
     "items": [
