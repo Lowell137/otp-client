@@ -78,7 +78,14 @@ function register({ ipcMain, ctx }) {
       const r = await agent.run({ history, onEvent: send, signal: ctl.signal, model: q?.model });
       return { ok: true, content: r.content, thinking: r.thinking || '', messages: r.messages };
     } catch (err) {
-      const message = ctl.signal.aborted ? 'Stopped.' : String(err?.message || err);
+      let message = ctl.signal.aborted ? 'Stopped.' : String(err?.message || err);
+      // "fetch failed" means the model server is not answering at all.
+      if (!ctl.signal.aborted && /fetch failed|ECONNREFUSED|ENOTFOUND/i.test(message)) {
+        const c = config.load();
+        message = c.provider === 'custom'
+          ? `Can't reach ${c.custom.name || 'your server'} (${c.custom.baseUrl || 'no address'}). Is it running?`
+          : `Can't reach Ollama (${c.ollama.baseUrl}). Is it running? Open the assistant panel to set it up.`;
+      }
       send({ type: 'error', message });
       return { ok: false, error: message };
     } finally {
