@@ -9,10 +9,13 @@ const { execFile, spawn } = require('child_process');
 
 // Picked from what the Ollama library has (checked 2026-11-21) and what worked
 // in our tests: Qwen3.5 answered best, LFM3 is the lightest.
+// While playing, the game needs the GPU too: the 4B model is the sweet spot (light,
+// still follows tools well, reads screenshots). Ollama drops the model from GPU
+// memory 3 minutes after an answer (keep_alive in providers.js).
 const MODELS = [
-  { id: 'lfm3:1.7b', name: 'LFM3 1.7B', note: 'Lightest, fast, tool calling. Text only.', minVram: 0 },
-  { id: 'qwen3.5:4b', name: 'Qwen3.5 4B', note: 'Balanced. Reads screenshots.', minVram: 6000 },
-  { id: 'qwen3.5:9b', name: 'Qwen3.5 9B', note: 'Best answers. Reads screenshots. Tight on 8 GB of GPU memory while the game runs.', minVram: 7800 },
+  { id: 'lfm3:1.7b', name: 'LFM3 1.7B', note: 'Lightest, for older or laptop GPUs. Simpler answers, text only.', minVram: 0 },
+  { id: 'qwen3.5:4b', name: 'Qwen3.5 4B', note: 'Best while playing: light on the GPU, still smart, reads screenshots.', minVram: 6000 },
+  { id: 'qwen3.5:9b', name: 'Qwen3.5 9B', note: 'Smartest. Heavy next to the game on 8 GB; best with 12 GB or more.', minVram: 7800 },
 ];
 
 const ollamaExe = () => path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama', 'ollama.exe');
@@ -29,7 +32,7 @@ function gpu() {
 
 function recommend(vramMb) {
   // The game uses some GPU memory too, so leave room for it.
-  if (vramMb >= 9500) return 'qwen3.5:9b';
+  if (vramMb >= 12000) return 'qwen3.5:9b';
   if (vramMb >= 6000) return 'qwen3.5:4b';
   return 'lfm3:1.7b';
 }

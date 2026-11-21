@@ -40,8 +40,10 @@ async function getJson(url, { headers = {}, timeoutMs = 5000 } = {}) {
 const toolSpec = (tools) => tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
 
 // ---- Ollama (/api/chat) ----
-function ollama(c) {
-  const base = c.ollama.baseUrl || 'http://127.0.0.1:11434';
+// keep_alive: the model leaves GPU memory 3 minutes after the last answer, so it
+// does not sit there while you play.
+function ollama(p) {
+  const base = String(p.baseUrl || cfgMod.OLLAMA_URL).replace(/\/+$/, '');
   const conv = (m) => {
     if (m.role === 'assistant') {
       const o = { role: 'assistant', content: m.content || '' };
@@ -54,11 +56,11 @@ function ollama(c) {
     return o;
   };
   return {
-    id: 'ollama',
+    id: p.id, name: p.name, type: 'ollama',
     async chat({ messages, tools, model, signal }) {
       const j = await postJson(`${base}/api/chat`, {
-        model: model || c.ollama.model, messages: messages.map(conv), tools: tools?.length ? toolSpec(tools) : undefined,
-        stream: false, options: { num_ctx: 8192, temperature: 0.3 },
+        model: model || p.model, messages: messages.map(conv), tools: tools?.length ? toolSpec(tools) : undefined,
+        stream: false, keep_alive: '3m', options: { num_ctx: 8192, temperature: 0.3 },
       }, { signal });
       const msg = j.message || {};
       const toolCalls = (msg.tool_calls || []).map((tc, i) => {
@@ -77,9 +79,9 @@ function ollama(c) {
 }
 
 // ---- OpenAI-compatible (/chat/completions) ----
-function openaiCompat(c) {
-  const base = (c.custom.baseUrl || '').replace(/\/+$/, '');
-  const key = cfgMod.decryptKey(c.custom.keyEnc);
+function openaiCompat(p) {
+  const base = String(p.baseUrl || '').replace(/\/+$/, '');
+  const key = p.key != null ? p.key : cfgMod.decryptKey(p.keyEnc);
   const headers = key ? { Authorization: `Bearer ${key}` } : {};
   if (/openrouter\.ai/.test(base)) { headers['HTTP-Referer'] = 'https://github.com/Lowell137/otp-client'; headers['X-Title'] = 'OTP Client'; }
   const conv = (m) => {
@@ -95,11 +97,11 @@ function openaiCompat(c) {
     return { role: m.role, content: m.content || '' };
   };
   return {
-    id: 'custom',
+    id: p.id, name: p.name, type: 'openai',
     async chat({ messages, tools, model, signal }) {
-      if (!base) throw new Error('No server address set for the custom provider');
+      if (!base) throw new Error(`No server address set for ${p.name || 'this provider'}`);
       const j = await postJson(`${base}/chat/completions`, {
-        model: model || c.custom.model, messages: messages.map(conv),
+        model: model || p.model, messages: messages.map(conv),
         tools: tools?.length ? toolSpec(tools) : undefined, temperature: 0.3,
       }, { headers, signal });
       const msg = j.choices?.[0]?.message || {};
@@ -149,16 +151,17 @@ function mock() {
   };
 }
 
+// One provider entry from the settings -> its client.
+const make = (p) => (p.type === 'ollama' ? ollama(p) : openaiCompat(p));
+
 function current() {
   if (process.env.OTP_AI_MOCK === '1') return mock();
-  const c = cfgMod.load();
-  return c.provider === 'custom' ? openaiCompat(c) : ollama(c);
+  return make(cfgMod.active(cfgMod.load()));
 }
 
 function currentModel() {
   if (process.env.OTP_AI_MOCK === '1') return 'mock';
-  const c = cfgMod.load();
-  return c.provider === 'custom' ? c.custom.model : c.ollama.model;
+  return cfgMod.active(cfgMod.load()).model;
 }
 
-module.exports = { current, currentModel, ollama, openaiCompat };
+module.exports = { current, currentModel, make, ollama, openaiCompat };

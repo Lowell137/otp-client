@@ -158,7 +158,17 @@
   #set input:focus { border-color: var(--line-hi); }
   #set .hint { font-size: 11.5px; color: var(--mute); line-height: 1.5; }
   #set .row { display: flex; gap: 8px; justify-content: flex-end; }
-  .pane { display: none; flex-direction: column; gap: 10px; } .pane.on { display: flex; }
+  #set .box[hidden] { display: none; }
+  #set .sh { display: flex; align-items: center; justify-content: space-between; }
+  .pv { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px; }
+  .pv.on { border-color: var(--blue); background: rgba(16, 99, 183, .1); }
+  .pv .t { flex: 1; min-width: 0; }
+  .pv .t b { font-size: 12.5px; }
+  .pv .t i { font-style: normal; font-size: 10px; font-weight: 700; color: #fff; background: var(--blue); border-radius: 4px; padding: 1px 5px; margin-left: 6px; }
+  .pv .t span { display: block; font-size: 11px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .btn.sm { padding: 4px 9px; font-size: 11.5px; }
+  .sel { background: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12.5px; color: var(--text); }
+  #menu .mh .off { color: #f0707a; font-weight: 400; }
 </style>
 </head>
 <body>
@@ -199,22 +209,32 @@
   </div>
 
   <div id="set">
-    <div class="box">
-      <h3>Model settings</h3>
-      <div class="tabs"><button class="btn" data-prov="ollama">Ollama (local)</button><button class="btn" data-prov="custom">Custom server</button></div>
-      <div class="pane" data-pane="ollama">
-        <label>Ollama address<input id="oUrl" placeholder="http://127.0.0.1:11434"></label>
-        <div class="hint">Runs models on your own PC, free and private. Choose the model in the chat box.</div>
+    <div class="box" id="setList">
+      <div class="sh"><h3>Model providers</h3><button class="ib" id="setClose" title="Back"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+      <div class="hint">Add as many as you like; pick the model (and with it the provider) in the chat box.</div>
+      <div id="provList"></div>
+      <div class="row" style="justify-content:flex-start;flex-wrap:wrap">
+        <select id="addPreset" class="sel">
+          <option value="">Add a provider…</option>
+          <option value="ollama">Ollama (local)</option>
+          <option value="lmstudio">LM Studio</option>
+          <option value="unsloth">Unsloth Studio</option>
+          <option value="llamacpp">llama.cpp server</option>
+          <option value="openrouter">OpenRouter</option>
+          <option value="custom">Other OpenAI-compatible</option>
+        </select>
+        <button class="btn" id="setOllama">Set up Ollama</button>
       </div>
-      <div class="pane" data-pane="custom">
-        <label>Name<input id="cName" placeholder="OpenRouter"></label>
-        <label>Server address (OpenAI-compatible)<input id="cUrl" placeholder="https://openrouter.ai/api/v1"></label>
-        <label>API key<input id="cKey" type="password" placeholder="sk-…"></label>
-        <div class="hint" id="keyState"></div>
-        <label>Model<input id="cModel" list="cModels" placeholder="pick after “Load models”, or type one"></label>
-        <datalist id="cModels"></datalist>
-        <div class="hint">Works with OpenRouter, LM Studio (http://127.0.0.1:1234/v1), llama.cpp server, Unsloth Studio and other OpenAI-compatible servers. The key is stored encrypted on this PC.</div>
-      </div>
+    </div>
+    <div class="box" id="setEdit" hidden>
+      <h3 id="editTitle">Provider</h3>
+      <label>Name<input id="pName" placeholder="My server"></label>
+      <label>Address<input id="pUrl" placeholder="http://127.0.0.1:1234/v1"></label>
+      <label id="pKeyRow">API key<input id="pKey" type="password" placeholder="sk-… (if the server needs one)"></label>
+      <div class="hint" id="keyState"></div>
+      <label>Model<input id="pModel" list="pModels" placeholder="pick after Test, or type one"></label>
+      <datalist id="pModels"></datalist>
+      <div class="hint" id="pHint"></div>
       <div class="row" style="justify-content:flex-start"><button class="btn" id="setTest">Test connection</button><span id="testOut" class="hint" style="align-self:center"></span></div>
       <div class="row"><button class="btn" id="setCancel">Cancel</button><button class="btn pri" id="setSave">Save</button></div>
     </div>
@@ -237,7 +257,7 @@
 
   const TOOL_LABEL = {
     current_game: 'Checking the current game', player_profile: 'Looking up the player', player_matches: 'Reading match history',
-    recommend_items: 'Checking the enemy team', tier_list: 'Reading the tier list', suggest_pick: 'Finding picks', counters: 'Checking matchups', esports: 'Checking pro play', last_game: 'Loading the game', duo_synergy: 'Checking duo synergy', champion_build: 'Getting the build', patch_notes: 'Reading patch notes', lol_wiki: 'Searching the wiki', read_page: 'Reading a page',
+    recommend_items: 'Checking the enemy team', tier_list: 'Reading the tier list', suggest_pick: 'Finding picks', counters: 'Checking matchups', esports: 'Checking pro play', lol_knowledge: 'Reading game notes', last_game: 'Loading the game', duo_synergy: 'Checking duo synergy', champion_build: 'Getting the build', patch_notes: 'Reading patch notes', lol_wiki: 'Searching the wiki', read_page: 'Reading a page',
   };
   // Start screen: suggestions follow what you are doing (out of game, champion
   // select, in game) and name your champion / lane opponent when known.
@@ -340,28 +360,29 @@
   }
 
   // ---- Provider + model (chips under the box, menu above them) ----
-  const provName = () => (cfg?.provider === 'custom' ? (cfg.custom.name || 'Custom server') : 'Ollama');
+  const activeP = () => (cfg ? cfg.providers.find((p) => p.id === cfg.active) || cfg.providers[0] : null);
+  const provName = () => (activeP() ? activeP().name : '…');
   async function refreshStatus() {
     cfg = await window.otpAI.config();
     status = await window.otpAI.status();
     const r = status.ok ? await window.otpAI.models() : { models: [] };
     models = (r.models || []).map((m) => m.id);
-    const cur = status.model || '';
-    if (!cur && models.length) await setModel(models[0]);
+    const a = activeP();
+    if (a && !a.model && models.length) await setModel(a.id, models[0]);
     $('#provName').textContent = provName();
     $('#provDot').className = 'dot' + (status.ok ? '' : ' off');
-    $('#modelName').textContent = (cfg.provider === 'custom' ? cfg.custom.model : cfg.ollama.model) || (models[0] || 'Choose a model');
+    $('#modelName').textContent = (activeP() && activeP().model) || models[0] || 'Choose a model';
     // Ollama missing or without a model: the setup card instead of a warning.
-    if (cfg.provider === 'ollama' && (!status.ok || !models.length)) { banner.className = ''; showSetup(); return; }
-    hideSetup();
+    if (a && a.type === 'ollama' && (!status.ok || !models.length)) { banner.className = ''; showSetup(); return; }
+    if (!forcedSetup) hideSetup();
     if (!status.ok) {
       banner.className = 'on';
-      const why = /401|403|auth/i.test(status.error || '') ? 'It wants an API key (or the key is wrong).' : esc(status.error || '');
-      banner.innerHTML = `<b>Can't use ${esc(provName())}.</b> ${why} Click the name below the chat box to fix it.`;
+      banner.innerHTML = `<b>Can't use ${esc(provName())}.</b> ${esc(status.error || '')} Pick another model below, or fix it in providers (click the name below the chat box).`;
     } else banner.className = '';
   }
 
   // ---- Setup card: install Ollama + a model in one click, or copy the commands ----
+  let forcedSetup = false; // opened from providers even though another provider works
   let setupPick = '';
   let setupPoll = null;
   async function showSetup() {
@@ -376,7 +397,7 @@
         <span><b>${esc(m.name)}</b>${m.id === st.recommended ? '<i>Recommended</i>' : ''}<em>${esc(m.note)}</em></span></label>`).join('')}</div>
       <div class="row"><button class="btn pri" id="suInstall">Install</button><button class="btn" id="suCopy">Copy commands</button></div>
       <div class="hint" id="suNote">Install opens PowerShell and shows the progress (Ollama, then the model). Copy gives the same commands to paste into PowerShell yourself.</div>
-      <div class="hint">Have your own server (LM Studio, OpenRouter, Unsloth)? <a href="#" id="suCustom">Use it instead</a>.</div>`;
+      <div class="hint">Have your own server (LM Studio, OpenRouter, Unsloth)? <a href="#" id="suCustom">Add it instead</a>.${forcedSetup ? ' · <a href="#" id="suBack">Back to chat</a>' : ''}</div>`;
     box.classList.add('on');
     box.querySelectorAll('input[name=sm]').forEach((r) => { r.onchange = () => { setupPick = r.value; box.querySelectorAll('.mc').forEach((l) => l.classList.toggle('on', l.querySelector('input').checked)); }; });
     $('#suInstall').onclick = async () => {
@@ -391,6 +412,7 @@
       startPoll();
     };
     $('#suCustom').onclick = (e) => { e.preventDefault(); openSettings(); };
+    const back = $('#suBack'); if (back) back.onclick = (e) => { e.preventDefault(); forcedSetup = false; hideSetup(); refreshStatus(); };
   }
   function hideSetup() { $('#setup').classList.remove('on'); if (setupPoll) { clearInterval(setupPoll); setupPoll = null; } }
   // While installing: check every 5 s, switch to the chat once the model is there.
@@ -401,20 +423,28 @@
       if (st && st.running && st.models.length) { hideSetup(); refreshStatus(); }
     }, 5000);
   }
-  async function setModel(id) {
-    if (!cfg || !id) return;
-    if (cfg.provider === 'custom') await window.otpAI.setConfig({ custom: { model: id } });
-    else await window.otpAI.setConfig({ ollama: { model: id } });
+  async function setModel(providerId, id) {
+    if (!providerId || !id) return;
+    await window.otpAI.setConfig({ model: { id: providerId, model: id } });
     cfg = await window.otpAI.config();
     $('#modelName').textContent = id;
+    $('#provName').textContent = provName();
   }
-  function openMenu() {
-    const cur = cfg?.provider === 'custom' ? cfg.custom.model : cfg?.ollama.model;
-    const list = [...new Set([...(cur ? [cur] : []), ...models])];
-    menu.innerHTML = `<div class="mh">${esc(provName())}</div>`
-      + (list.length ? list.map((id) => `<div class="mi${id === cur ? ' cur' : ''}" data-model="${esc(id)}"><span>${esc(id)}</span></div>`).join('') : `<div class="none">${status?.ok ? 'No models on this server.' : 'Not connected.'}</div>`)
-      + '<div class="sep"></div><div class="mi" data-act="settings"><span>Model settings…</span></div>';
+  // Every provider's models, grouped; picking one also picks its provider.
+  async function openMenu() {
+    menu.innerHTML = '<div class="none">Loading models…</div>';
     menu.classList.add('on');
+    const all = await window.otpAI.modelsAll();
+    let html = '';
+    for (const p of all) {
+      const list = [...new Set([...(p.model ? [p.model] : []), ...p.models])];
+      html += `<div class="mh">${esc(p.name)}${p.ok ? '' : ` <span class="off">· ${esc(p.error || 'off')}</span>`}</div>`;
+      html += list.length
+        ? list.map((id) => `<div class="mi${p.active && id === p.model ? ' cur' : ''}" data-p="${esc(p.id)}" data-model="${esc(id)}"><span>${esc(id)}</span></div>`).join('')
+        : `<div class="none">${p.ok ? 'No models.' : 'Not connected.'}</div>`;
+    }
+    html += '<div class="sep"></div><div class="mi" data-act="settings"><span>Providers…</span></div>';
+    menu.innerHTML = html;
   }
   $('#modelChip').onclick = (e) => { e.stopPropagation(); menu.classList.contains('on') ? menu.classList.remove('on') : openMenu(); };
   $('#provChip').onclick = () => openSettings();
@@ -423,7 +453,8 @@
     if (!it) return;
     menu.classList.remove('on');
     if (it.dataset.act === 'settings') { openSettings(); return; }
-    await setModel(it.dataset.model);
+    await setModel(it.dataset.p, it.dataset.model);
+    refreshStatus();
   });
   document.addEventListener('click', (e) => { if (!e.target.closest('#menu, #modelChip')) menu.classList.remove('on'); });
 
@@ -576,31 +607,56 @@
     if (it && !busyId) { await openChat(it.dataset.id); closeHistory(); }
   });
 
-  // ---- Settings ----
-  let prov = 'ollama';
-  const showProv = (p) => {
-    prov = p;
-    document.querySelectorAll('[data-prov]').forEach((b) => b.classList.toggle('on', b.dataset.prov === p));
-    document.querySelectorAll('[data-pane]').forEach((x) => x.classList.toggle('on', x.dataset.pane === p));
-    $('#testOut').textContent = '';
+  // ---- Providers: list, add (from presets), edit, remove ----
+  const PRESETS = {
+    ollama: { type: 'ollama', name: 'Ollama', baseUrl: 'http://127.0.0.1:11434', hint: 'Local models through Ollama. Not installed? Use "Set up Ollama".' },
+    lmstudio: { type: 'openai', name: 'LM Studio', baseUrl: 'http://127.0.0.1:1234/v1', hint: 'Start the server in LM Studio (Developer tab) first.' },
+    unsloth: { type: 'openai', name: 'Unsloth Studio', baseUrl: 'http://127.0.0.1:8888/v1', hint: 'Unsloth Studio API. Needs its API key; load a model or turn on Model auto-switch.' },
+    llamacpp: { type: 'openai', name: 'llama.cpp', baseUrl: 'http://127.0.0.1:8080/v1', hint: 'llama-server with --jinja for tool calling.' },
+    openrouter: { type: 'openai', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', hint: 'Cloud models with your OpenRouter key. Pick a model that supports tools.' },
+    custom: { type: 'openai', name: 'Custom', baseUrl: '', hint: 'Any OpenAI-compatible server (/v1/chat/completions).' },
   };
-  document.querySelectorAll('[data-prov]').forEach((b) => { b.onclick = () => showProv(b.dataset.prov); });
-  const draft = () => ({ provider: prov, ollama: { baseUrl: $('#oUrl').value }, custom: { name: $('#cName').value, baseUrl: $('#cUrl').value, model: $('#cModel').value, key: $('#cKey').value } });
+  let editing = null; // { id?, type }
   async function openSettings() {
     cfg = await window.otpAI.config();
-    $('#oUrl').value = cfg.ollama.baseUrl || '';
-    $('#cName').value = cfg.custom.name || '';
-    $('#cUrl').value = cfg.custom.baseUrl || '';
-    $('#cKey').value = '';
-    $('#cKey').placeholder = cfg.custom.hasKey ? '•••••••••••••••• (saved)' : 'sk-… (if the server needs one)';
-    $('#keyState').innerHTML = cfg.custom.hasKey ? '<span style="color:#2fb96b">✓ Key saved (encrypted).</span> Type a new one to replace it, or <a href="#" id="keyRm" style="color:#6cb2ff">remove it</a>.' : '';
-    const rm = $('#keyRm'); if (rm) rm.onclick = async (e) => { e.preventDefault(); await window.otpAI.setConfig({ custom: { clearKey: true } }); openSettings(); };
-    $('#cModel').value = cfg.custom.model || '';
-    $('#cModels').innerHTML = (cfg.custom.models || []).map((m) => `<option value="${esc(m)}">`).join('');
-    showProv(cfg.provider);
+    $('#provList').innerHTML = cfg.providers.map((p) => `<div class="pv${p.id === cfg.active ? ' on' : ''}">
+      <div class="t"><b>${esc(p.name)}</b>${p.id === cfg.active ? '<i>In use</i>' : ''}<span>${esc(p.baseUrl || 'no address')}${p.model ? ' · ' + esc(p.model) : ''}</span></div>
+      ${p.id === cfg.active ? '' : `<button class="btn sm" data-use="${esc(p.id)}">Use</button>`}
+      <button class="ib" data-edit="${esc(p.id)}" title="Edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+      ${cfg.providers.length > 1 ? `<button class="ib" data-del="${esc(p.id)}" title="Remove"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>` : ''}
+    </div>`).join('');
+    $('#setList').hidden = false;
+    $('#setEdit').hidden = true;
     $('#set').classList.add('on');
   }
-  $('#gear')?.addEventListener('click', openSettings);
+  function openEdit(p, preset) {
+    editing = { id: p ? p.id : undefined, type: p ? p.type : preset.type };
+    $('#editTitle').textContent = p ? `Edit ${p.name}` : `Add ${preset.name}`;
+    $('#pName').value = p ? p.name : preset.name;
+    $('#pUrl').value = p ? p.baseUrl : preset.baseUrl;
+    $('#pModel').value = p ? p.model || '' : '';
+    $('#pModels').innerHTML = ((p && p.models) || []).map((m) => `<option value="${esc(m)}">`).join('');
+    $('#pKeyRow').style.display = editing.type === 'ollama' ? 'none' : '';
+    $('#pKey').value = '';
+    $('#pKey').placeholder = p && p.hasKey ? '•••••••••••••••• (saved)' : 'sk-… (if the server needs one)';
+    $('#keyState').innerHTML = p && p.hasKey ? '<span style="color:#2fb96b">✓ Key saved (encrypted).</span> Type a new one to replace it, or <a href="#" id="keyRm" style="color:#6cb2ff">remove it</a>.' : '';
+    const rm = $('#keyRm');
+    if (rm) rm.onclick = async (e) => { e.preventDefault(); await window.otpAI.setConfig({ upsert: { id: p.id, clearKey: true } }); cfg = await window.otpAI.config(); openEdit(cfg.providers.find((x) => x.id === p.id), null); };
+    $('#pHint').textContent = (preset && preset.hint) || (Object.values(PRESETS).find((x) => x.name === (p && p.name)) || {}).hint || '';
+    $('#testOut').textContent = '';
+    $('#setList').hidden = true;
+    $('#setEdit').hidden = false;
+  }
+  $('#provList').addEventListener('click', async (e) => {
+    const use = e.target.closest('[data-use]'), ed = e.target.closest('[data-edit]'), del = e.target.closest('[data-del]');
+    if (use) { await window.otpAI.setConfig({ active: use.dataset.use }); await openSettings(); refreshStatus(); }
+    else if (ed) openEdit(cfg.providers.find((p) => p.id === ed.dataset.edit), null);
+    else if (del) { await window.otpAI.setConfig({ remove: del.dataset.del }); await openSettings(); refreshStatus(); }
+  });
+  $('#addPreset').onchange = () => { const k = $('#addPreset').value; $('#addPreset').value = ''; if (PRESETS[k]) openEdit(null, PRESETS[k]); };
+  $('#setOllama').onclick = () => { $('#set').classList.remove('on'); forcedSetup = true; showSetup(); };
+  $('#setClose').onclick = () => $('#set').classList.remove('on');
+  const draft = () => ({ id: editing && editing.id, type: editing && editing.type, name: $('#pName').value, baseUrl: $('#pUrl').value, key: $('#pKey').value });
   $('#setTest').onclick = async () => {
     const out = $('#testOut');
     out.style.color = ''; out.textContent = 'Testing…';
@@ -608,17 +664,16 @@
     if (r.ok) {
       out.style.color = '#2fb96b';
       out.textContent = `Connected · ${r.models.length} model${r.models.length === 1 ? '' : 's'}`;
-      if (prov === 'custom') {
-        $('#cModels').innerHTML = r.models.map((m) => `<option value="${esc(m)}">`).join('');
-        if (!$('#cModel').value && r.models[0]) $('#cModel').value = r.models[0];
-        await window.otpAI.setConfig({ custom: { models: r.models } });
-      }
+      $('#pModels').innerHTML = r.models.map((m) => `<option value="${esc(m)}">`).join('');
+      if (!$('#pModel').value && r.models[0]) $('#pModel').value = r.models[0];
+      editing.models = r.models;
     } else { out.style.color = '#f0707a'; out.textContent = r.error; }
   };
-  $('#setCancel').onclick = () => $('#set').classList.remove('on');
+  $('#setCancel').onclick = () => openSettings();
   $('#setSave').onclick = async () => {
-    await window.otpAI.setConfig(draft());
-    $('#set').classList.remove('on');
+    const d = draft();
+    await window.otpAI.setConfig({ upsert: { id: d.id, type: d.type, name: d.name, baseUrl: d.baseUrl, model: $('#pModel').value, key: d.key, models: editing.models, makeActive: !d.id } });
+    await openSettings();
     refreshStatus();
   };
 

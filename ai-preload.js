@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('otpAI', {
   config: () => ipcRenderer.invoke('otp:ai-config-get'),
   setConfig: (patch) => ipcRenderer.invoke('otp:ai-config-set', patch),
   models: () => ipcRenderer.invoke('otp:ai-models'),
+  modelsAll: () => ipcRenderer.invoke('otp:ai-models-all'),
   test: (draft) => ipcRenderer.invoke('otp:ai-test', draft),
   context: () => ipcRenderer.invoke('otp:ai-context'),
   setupStatus: () => ipcRenderer.invoke('otp:ai-setup-status'),

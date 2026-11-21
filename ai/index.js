@@ -29,42 +29,58 @@ function register({ ipcMain, ctx }) {
     return { phase: lob.phase === 'InGame' ? 'game' : 'select', champ: lob.me?.champ || '', role, opp };
   });
 
+  const plainErr = (e) => {
+    const msg = String(e?.message || e);
+    if (/401|403|auth/i.test(msg)) return 'The server wants an API key (or the key is wrong).';
+    if (/fetch failed|ECONNREFUSED|timeout|aborted/i.test(msg)) return 'Nothing answers at that address.';
+    return msg;
+  };
+
   ipcMain.handle('otp:ai-models', async () => {
     try { return { ok: true, models: await providers.current().models() }; }
-    catch (e) { return { ok: false, error: String(e?.message || e), models: [] }; }
+    catch (e) { return { ok: false, error: plainErr(e), models: [] }; }
   });
 
-  // Settings dialog: try a provider config before saving it (lists its models).
+  // Model menu: every provider's models at once (each one may be off).
+  ipcMain.handle('otp:ai-models-all', async () => {
+    const c = config.load();
+    return Promise.all(c.providers.map(async (p) => {
+      const base = { id: p.id, name: p.name, type: p.type, model: p.model, active: p.id === c.active };
+      try {
+        const ms = await Promise.race([providers.make(p).models(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))]);
+        return { ...base, ok: true, models: ms.map((m) => m.id) };
+      } catch (e) {
+        return { ...base, ok: false, error: plainErr(e), models: p.models || [] };
+      }
+    }));
+  });
+
+  // Settings: try a provider before saving it (lists its models). Without a new
+  // key, a saved provider's own key is used.
   ipcMain.handle('otp:ai-test', async (_e, draft) => {
     try {
-      const c = config.load();
-      const tmp = JSON.parse(JSON.stringify(c));
-      if (draft?.provider === 'ollama') {
-        if (draft.ollama?.baseUrl) tmp.ollama.baseUrl = draft.ollama.baseUrl.trim().replace(/\/+$/, '');
-        const p = providers.ollama(tmp);
-        await p.ping();
-        return { ok: true, models: (await p.models()).map((m) => m.id) };
-      }
-      if (typeof draft?.custom?.baseUrl === 'string') tmp.custom.baseUrl = draft.custom.baseUrl.trim().replace(/\/+$/, '');
-      if (draft?.custom?.key) tmp.custom.keyEnc = 'raw:' + Buffer.from(draft.custom.key, 'utf8').toString('base64');
-      const p = providers.openaiCompat(tmp);
-      return { ok: true, models: (await p.models()).map((m) => m.id) };
+      const saved = draft?.id ? config.load().providers.find((p) => p.id === draft.id) : null;
+      const p = {
+        id: 'test', type: draft?.type === 'ollama' ? 'ollama' : 'openai', name: draft?.name || 'test',
+        baseUrl: String(draft?.baseUrl || '').trim().replace(/\/+$/, '') || (draft?.type === 'ollama' ? config.OLLAMA_URL : ''),
+        key: draft?.key ? String(draft.key) : (saved ? config.decryptKey(saved.keyEnc) : ''),
+      };
+      const client = providers.make(p);
+      await client.ping();
+      return { ok: true, models: (await client.models()).map((m) => m.id) };
     } catch (e) {
-      let msg = String(e?.message || e);
-      if (/401|403|auth/i.test(msg)) msg = 'The server wants an API key (or the key is wrong).';
-      else if (/fetch failed|ECONNREFUSED|timeout/i.test(msg)) msg = 'Nothing answers at that address.';
-      return { ok: false, error: msg };
+      return { ok: false, error: plainErr(e) };
     }
   });
 
   ipcMain.handle('otp:ai-status', async () => {
-    const c = config.load();
-    const p = providers.current();
+    const a = config.active(config.load());
+    const info = { id: a.id, name: a.name, type: a.type, baseUrl: a.baseUrl, model: providers.currentModel() };
     try {
-      await p.ping();
-      return { ok: true, provider: p.id, model: providers.currentModel() };
+      await providers.current().ping();
+      return { ok: true, provider: a.type, ...info };
     } catch (e) {
-      return { ok: false, provider: p.id, model: providers.currentModel(), error: String(e?.message || e), ollamaUrl: c.ollama.baseUrl };
+      return { ok: false, provider: a.type, ...info, error: plainErr(e) };
     }
   });
 
@@ -81,10 +97,10 @@ function register({ ipcMain, ctx }) {
       let message = ctl.signal.aborted ? 'Stopped.' : String(err?.message || err);
       // "fetch failed" means the model server is not answering at all.
       if (!ctl.signal.aborted && /fetch failed|ECONNREFUSED|ENOTFOUND/i.test(message)) {
-        const c = config.load();
-        message = c.provider === 'custom'
-          ? `Can't reach ${c.custom.name || 'your server'} (${c.custom.baseUrl || 'no address'}). Is it running?`
-          : `Can't reach Ollama (${c.ollama.baseUrl}). Is it running? Open the assistant panel to set it up.`;
+        const a = config.active(config.load());
+        message = a.type === 'ollama'
+          ? `Can't reach Ollama (${a.baseUrl}). Is it running? Open the assistant panel to set it up.`
+          : `Can't reach ${a.name || 'your server'} (${a.baseUrl || 'no address'}). Is it running?`;
       }
       send({ type: 'error', message });
       return { ok: false, error: message };
@@ -97,12 +113,14 @@ function register({ ipcMain, ctx }) {
 
   // Ollama setup screen (ai/setup.js)
   const setup = require('./setup.js');
-  ipcMain.handle('otp:ai-setup-status', async () => setup.status(providers.ollama(config.load())));
+  const ollamaEntry = () => config.load().providers.find((p) => p.type === 'ollama') || { id: '', type: 'ollama', name: 'Ollama', baseUrl: config.OLLAMA_URL };
+  ipcMain.handle('otp:ai-setup-status', async () => setup.status(providers.make(ollamaEntry())));
   ipcMain.handle('otp:ai-setup-commands', (_e, model) => setup.commands(model));
   ipcMain.handle('otp:ai-setup-install', (_e, model) => {
-    // Use Ollama with the chosen model once it is there.
+    // Use Ollama with the chosen model once it is there (adds Ollama if missing).
     const r = setup.install(model);
-    config.update({ provider: 'ollama', ollama: { model: r.model } });
+    const o = ollamaEntry();
+    config.update({ upsert: { id: o.id || undefined, type: 'ollama', name: o.name || 'Ollama', baseUrl: o.baseUrl || config.OLLAMA_URL, model: r.model, makeActive: true } });
     return r;
   });
 

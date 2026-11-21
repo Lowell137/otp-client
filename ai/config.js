@@ -1,33 +1,41 @@
 // AI assistant settings, kept in <userData>/ai.json.
 //
-// provider: 'ollama' (local, default) or 'custom' (any OpenAI-compatible server:
-// OpenRouter, LM Studio, llama.cpp server, ...). API keys are encrypted with
-// Electron's safeStorage (Windows DPAPI) and never sent to the page.
+//   { active: <provider id>, providers: [{ id, type, name, baseUrl, keyEnc, model, models }] }
+//   type 'ollama' = Ollama's own API; 'openai' = any OpenAI-compatible server
+//   (LM Studio, Unsloth Studio, llama.cpp, OpenRouter, ...). Any number of them;
+//   the active one answers. API keys are encrypted with Electron's safeStorage
+//   (Windows DPAPI) and never sent to the page.
+// Older files ({ provider, ollama, custom }) are converted on load.
 
 const fs = require('fs');
 const path = require('path');
 const { app, safeStorage } = require('electron');
 
-const DEFAULTS = {
-  provider: 'ollama',
-  ollama: { baseUrl: 'http://127.0.0.1:11434', model: '' },
-  custom: { name: 'Custom', baseUrl: '', keyEnc: '', model: '', models: [] },
-};
-
+const OLLAMA_URL = 'http://127.0.0.1:11434';
 const file = () => path.join(app.getPath('userData'), 'ai.json');
+const newId = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+const cleanUrl = (u) => String(u || '').trim().replace(/\/+$/, '');
+
+function fromOld(c) {
+  const list = [{ id: 'ollama', type: 'ollama', name: 'Ollama', baseUrl: c.ollama?.baseUrl || OLLAMA_URL, keyEnc: '', model: c.ollama?.model || '', models: [] }];
+  if (c.custom && c.custom.baseUrl) {
+    list.push({ id: 'custom', type: 'openai', name: c.custom.name || 'Custom', baseUrl: c.custom.baseUrl, keyEnc: c.custom.keyEnc || '', model: c.custom.model || '', models: c.custom.models || [] });
+  }
+  return { active: c.provider === 'custom' && list.length > 1 ? 'custom' : 'ollama', providers: list };
+}
 
 function load() {
   let c = {};
   try { c = JSON.parse(fs.readFileSync(file(), 'utf8')); } catch {}
-  return {
-    provider: c.provider === 'custom' ? 'custom' : 'ollama',
-    ollama: { ...DEFAULTS.ollama, ...(c.ollama || {}) },
-    custom: { ...DEFAULTS.custom, ...(c.custom || {}) },
-  };
+  if (!Array.isArray(c.providers)) c = fromOld(c);
+  c.providers = c.providers.filter((p) => p && p.id && (p.type === 'ollama' || p.type === 'openai'));
+  if (!c.providers.length) c.providers = [{ id: 'ollama', type: 'ollama', name: 'Ollama', baseUrl: OLLAMA_URL, keyEnc: '', model: '', models: [] }];
+  if (!c.providers.some((p) => p.id === c.active)) c.active = c.providers[0].id;
+  return c;
 }
 
 function save(c) {
-  try { fs.writeFileSync(file(), JSON.stringify(c, null, 2)); } catch (e) { console.warn('[otp] ai config save:', e?.message || e); }
+  try { fs.writeFileSync(file(), JSON.stringify({ active: c.active, providers: c.providers }, null, 2)); } catch (e) { console.warn('[otp] ai config save:', e?.message || e); }
 }
 
 function encryptKey(key) {
@@ -45,34 +53,48 @@ function decryptKey(v) {
   return '';
 }
 
-// What the page may see: everything but the key itself.
+const active = (c) => c.providers.find((p) => p.id === c.active) || c.providers[0];
+
+// What the page may see: everything but the keys.
 function publicView(c) {
   return {
-    provider: c.provider,
-    ollama: { ...c.ollama },
-    custom: { name: c.custom.name, baseUrl: c.custom.baseUrl, model: c.custom.model, models: c.custom.models || [], hasKey: !!c.custom.keyEnc },
+    active: c.active,
+    providers: c.providers.map((p) => ({ id: p.id, type: p.type, name: p.name, baseUrl: p.baseUrl, model: p.model, models: p.models || [], hasKey: !!p.keyEnc })),
   };
 }
 
-// Page sends a partial update; a key is only replaced when one is given.
+// Page sends one change at a time:
+//   { active: id }                      use this provider
+//   { model: { id, model } }            pick a model (and use that provider)
+//   { upsert: { id?, type, name, baseUrl, model?, models?, key?, clearKey? } }
+//   { remove: id }
 function update(patch) {
   const c = load();
-  if (patch.provider === 'ollama' || patch.provider === 'custom') c.provider = patch.provider;
-  if (patch.ollama) {
-    if (typeof patch.ollama.baseUrl === 'string' && patch.ollama.baseUrl.trim()) c.ollama.baseUrl = patch.ollama.baseUrl.trim().replace(/\/+$/, '');
-    if (typeof patch.ollama.model === 'string') c.ollama.model = patch.ollama.model;
+  if (patch.active && c.providers.some((p) => p.id === patch.active)) c.active = patch.active;
+  if (patch.model && patch.model.id) {
+    const p = c.providers.find((x) => x.id === patch.model.id);
+    if (p) { p.model = String(patch.model.model || ''); c.active = p.id; }
   }
-  if (patch.custom) {
-    const p = patch.custom;
-    if (typeof p.name === 'string') c.custom.name = p.name.trim() || 'Custom';
-    if (typeof p.baseUrl === 'string') c.custom.baseUrl = p.baseUrl.trim().replace(/\/+$/, '');
-    if (typeof p.model === 'string') c.custom.model = p.model.trim();
-    if (Array.isArray(p.models)) c.custom.models = p.models.map(String).filter(Boolean).slice(0, 50);
-    if (typeof p.key === 'string' && p.key.trim()) c.custom.keyEnc = encryptKey(p.key.trim());
-    if (p.clearKey) c.custom.keyEnc = '';
+  if (patch.upsert) {
+    const u = patch.upsert;
+    let p = u.id ? c.providers.find((x) => x.id === u.id) : null;
+    if (!p) { p = { id: u.id || newId(), type: u.type === 'ollama' ? 'ollama' : 'openai', name: '', baseUrl: '', keyEnc: '', model: '', models: [] }; c.providers.push(p); }
+    if (u.type === 'ollama' || u.type === 'openai') p.type = u.type;
+    if (typeof u.name === 'string') p.name = u.name.trim() || (p.type === 'ollama' ? 'Ollama' : 'Custom');
+    if (typeof u.baseUrl === 'string') p.baseUrl = cleanUrl(u.baseUrl) || (p.type === 'ollama' ? OLLAMA_URL : '');
+    if (typeof u.model === 'string') p.model = u.model.trim();
+    if (Array.isArray(u.models)) p.models = u.models.map(String).filter(Boolean).slice(0, 80);
+    if (typeof u.key === 'string' && u.key.trim()) p.keyEnc = encryptKey(u.key.trim());
+    if (u.clearKey) p.keyEnc = '';
+    if (u.makeActive) c.active = p.id;
+    c.lastId = p.id;
+  }
+  if (patch.remove && c.providers.length > 1) {
+    c.providers = c.providers.filter((p) => p.id !== patch.remove);
+    if (c.active === patch.remove) c.active = c.providers[0].id;
   }
   save(c);
   return c;
 }
 
-module.exports = { load, save, update, publicView, decryptKey };
+module.exports = { load, save, update, publicView, decryptKey, active, OLLAMA_URL };
