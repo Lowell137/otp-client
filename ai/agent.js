@@ -43,6 +43,7 @@ function systemPrompt(who) {
     '- recommend a champion to play: suggest_pick. What is strong / meta: tier_list.',
     '- runes, items, spells, skill order for a champion: champion_build.',
     '- best teammate for a champion ("Nami yanına ne alayım"): duo_synergy.',
+    "- pro play: esports (a team's results or upcoming matches, a pro player's recent games, a league's schedule).",
     '- counters and matchups ("who counters Yasuo", "Yasuo vs Annie", "is X good against Y"): counters (win rate in the matchup, hardest and easiest opponents). For a matchup question also get champion_build for the build.',
     '- boots and defensive items against the enemy team: recommend_items.',
     '- review of a finished game ("bu maç ne almalıydım", "what went wrong", "son maçım"): last_game. Compare the items with the enemy team and the recommended build, then give 2-4 concrete points.',
@@ -123,6 +124,7 @@ function forcedTool(q) {
   const t = String(q || '');
   const role = (ROLE_WORDS.find(([, re]) => re.test(t)) || [])[0];
   if (/(\bbot(u|unu|lar|ları|lari)\b|boots|savunma|defansif|defensive|karşı.*(al|item|eşya)|(item|eşya).*karşı|anti.?heal)/i.test(t)) return { name: 'recommend_items', args: {} };
+  if (/(espor|esports|\blck\b|\blec\b|\blpl\b|\blcs\b|worlds|\bmsi\b|pro (oyuncu|maç|player|game)|turnuva|tournament)/i.test(t)) return { name: 'esports', args: {} };
   if (/(counter|matchup|eşleşme|\bvs\.?\b|karşı (iyi|güçlü|zayıf|zor|kolay)|(iyi|güçlü|zayıf) mı)/i.test(t)) return { name: 'counters', args: {} };
   if (/(item|eşya|build|rün|rune|starter|başlangıç|ilk .*al|ne al|alay[ıi]m|almal[ıi]|skill|yetenek sıra|spell|büyü)/i.test(t)) return { name: 'champion_build', args: {} };
   if (/((karakter|şampiyon|champ\w*).*(öner|seç)|(öner|suggest|recommend).*(karakter|şampiyon|champ|pick)|ne (oynay|seçey)|what should i (play|pick))/i.test(t)) return { name: 'suggest_pick', args: role ? { role } : {} };
@@ -159,6 +161,11 @@ async function fillFromQuestion(name, args, q) {
       const enemies = champs.filter((c) => c !== mine);
       return { ...args, ...(mine ? { myChampion: mine } : {}), ...(enemies.length ? { enemies } : {}) };
     }
+  }
+  if (name === 'esports' && !args.team && !args.player && !args.league) {
+    // A league named in the question; teams / players the model has to pass.
+    const lg = String(q).match(/\b(LCK|LEC|LPL|LCS|LTA|PCS|VCS|CBLOL|LJL|Worlds|MSI|First Stand)\b/i);
+    if (lg) return { ...args, league: lg[1], ...(/(bu hafta|this week|yaklaşan|upcoming|ne zaman|when|schedule|fikstür)/i.test(q) ? { upcoming: true } : {}) };
   }
   if (name === 'counters' && !args.champion) {
     // "Yasuo vs Annie mid": first champion is mine, second the opponent.
