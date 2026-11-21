@@ -43,6 +43,7 @@ function systemPrompt(who) {
     '- recommend a champion to play: suggest_pick. What is strong / meta: tier_list.',
     '- runes, items, spells, skill order for a champion: champion_build.',
     '- best teammate for a champion ("Nami yanına ne alayım"): duo_synergy.',
+    '- how to play, strategy and concepts (wave management, recalls, vision, objectives, roles, trading, team fights, macro, jungle, climbing): lol_knowledge, then answer from those notes in your own words.',
     "- pro play: esports (a team's results or upcoming matches, a pro player's recent games, a league's schedule).",
     '- counters and matchups ("who counters Yasuo", "Yasuo vs Annie", "is X good against Y"): counters (win rate in the matchup, hardest and easiest opponents). For a matchup question also get champion_build for the build.',
     '- boots and defensive items against the enemy team: recommend_items.',
@@ -128,6 +129,7 @@ function forcedTool(q) {
   if (/(counter|matchup|eşleşme|\bvs\.?\b|karşı (iyi|güçlü|zayıf|zor|kolay)|(iyi|güçlü|zayıf) mı)/i.test(t)) return { name: 'counters', args: {} };
   if (/(item|eşya|build|rün|rune|starter|başlangıç|ilk .*al|ne al|alay[ıi]m|almal[ıi]|skill|yetenek sıra|spell|büyü)/i.test(t)) return { name: 'champion_build', args: {} };
   if (/((karakter|şampiyon|champ\w*).*(öner|seç)|(öner|suggest|recommend).*(karakter|şampiyon|champ|pick)|ne (oynay|seçey)|what should i (play|pick))/i.test(t)) return { name: 'suggest_pick', args: role ? { role } : {} };
+  if (/(dalga|wave|freeze|dondur|recall|base.?e dön|geri dön|\bward|vision|görüş|makro|macro|team ?fight|takım savaş|split|rotasyon|rotation|gank|power spike|güç an|nasıl (oyna|kazan|carry|yüksel|gelişir)|how (do i|to) (play|win|climb|carry|improve)|tavsiye|ipucu|\btips?\b|ne yapmalıyım|what should i do)/i.test(t)) return { name: 'lol_knowledge', args: { query: t } };
   if (/(tier|meta|en güçlü|en iyi|strongest|best|op olan|güçlü)/i.test(t)) return { name: 'tier_list', args: role ? { role } : {} };
   if (/(patch|yama|nerf|buff)/i.test(t)) return { name: 'patch_notes', args: {} };
   return null;
