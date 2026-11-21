@@ -26,17 +26,30 @@ function parseQwik(html) {
 
 module.exports = {
   name: 'tier_list',
-  description: 'The current tier list (lolalytics, Emerald+ by default): the strongest champions overall or for one role (top, jungle, mid, bot, support) with tier, win rate, pick rate and ban rate. Use for "best champion", "what is strong", "meta" questions.',
+  description: 'The current tier list (lolalytics, Emerald+): the strongest champions for one role (top, jungle, mid, bot, support), or with no role the top 3 of every role. Tier, win rate, pick rate, ban rate. Use for "best champion", "what is strong", "meta" questions.',
   parameters: {
     type: 'object',
     properties: {
-      role: { type: 'string', description: 'top, jungle, mid, bot or support. Leave out for all roles.' },
-      count: { type: 'integer', description: 'How many champions, 1-20 (default 10)' },
+      role: { type: 'string', description: 'top, jungle, mid, bot or support. Leave out for the top picks of every role.' },
+      count: { type: 'integer', description: 'How many champions, 1-20 (default 10 for one role, 3 per role for all roles)' },
     },
     required: [],
   },
   async run(args, ctx) {
-    const lane = LANES[data.norm(args?.role)] || 'all';
+    // No role: each role on its own (an overall list hides whole roles, e.g. no ADC in the top 10).
+    if (!LANES[data.norm(args?.role)]) {
+      const per = Math.max(1, Math.min(5, Number(args?.count) || 3));
+      const roles = ['top', 'jungle', 'mid', 'bot', 'support'];
+      const lists = await Promise.all(roles.map((r) => module.exports.run({ role: r, count: per }, ctx)));
+      const err = lists.find((l) => l.error);
+      if (err && lists.every((l) => l.error)) return err;
+      return {
+        source: 'lolalytics', patch: lists.find((l) => l.patch)?.patch || '', rank: 'Emerald+',
+        byRole: Object.fromEntries(roles.map((r, i) => [r, lists[i].error ? lists[i].error : lists[i].champions.map((c) => ({ champion: c.champion, tier: c.tier, winRate: c.winRate, pickRate: c.pickRate }))])),
+        note: 'Top picks of each role, champions really played there (10%+ of their games, 0.5%+ pick rate); bot = marksmen.',
+      };
+    }
+    const lane = LANES[data.norm(args?.role)];
     const n = Math.max(1, Math.min(20, Number(args?.count) || 10));
     const res = await ctx.call('otp:tierlist', { lane });
     if (!res?.ok) return { error: `Could not load the tier list: ${res?.error || 'unknown error'}` };
