@@ -1,5 +1,23 @@
 [
   {
+    "version": "0.1.26",
+    "date": "2026-11-21",
+    "items": [
+      [
+        "Your mistakes, game by game",
+        "Ask the assistant what you did wrong in your last game. It lists every death with the minute, the place on the map, who got you and what the enemy took right after, plus lane, big fights and the turning point, then coaches you on it (Summoner's Rift)."
+      ],
+      [
+        "Live answers",
+        "You see the answer being written: a status line with seconds, thinking you can open, the tools it uses, and the text as it streams in."
+      ],
+      [
+        "Several accounts in one question",
+        "Name your accounts with their servers (EUW and TR) and it checks each one, then suggests roles, champions and a ban."
+      ]
+    ]
+  },
+  {
     "version": "0.1.25",
     "date": "2026-11-21",
     "items": [
