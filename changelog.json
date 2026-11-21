@@ -1,5 +1,35 @@
 [
   {
+    "version": "0.1.24",
+    "date": "2026-11-21",
+    "items": [
+      [
+        "Matchups",
+        "Ask who counters a champion or how a matchup goes (e.g. Yasuo vs Annie); win rates from op.gg."
+      ],
+      [
+        "Pro play",
+        "Team results, upcoming matches and what pros played, from Leaguepedia."
+      ],
+      [
+        "Game know-how",
+        "Questions about waves, recalls, vision, objectives, team fights and more are answered from built-in notes."
+      ],
+      [
+        "Strongest picks per role",
+        "The strongest champions now come as the top 3 of every role, including ADC."
+      ],
+      [
+        "Faster answers",
+        "When the assistant needs several lookups, it does them at the same time."
+      ],
+      [
+        "Clearer errors",
+        "When your model server is off, the assistant says so instead of \"fetch failed\"."
+      ]
+    ]
+  },
+  {
     "version": "0.1.23",
     "date": "2026-11-21",
     "items": [
