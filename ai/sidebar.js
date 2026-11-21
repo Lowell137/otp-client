@@ -28,13 +28,44 @@ function createSidebar({ getWin, readState, writeState, onToggle }) {
     }
     width = Math.min(Math.max(width, MIN_W), maxW(cw));
     const pageW = cw - width;
+    // The page's own vertical scrollbar would show as a strip between the page
+    // and the panel (normally it hides under the window buttons): make the page
+    // that much wider so the scrollbar sits under the panel. Wheel scrolling stays.
+    const vw = pageW + scrollbarW;
     try {
       wc.enableDeviceEmulation({
-        screenPosition: 'desktop', screenSize: { width: pageW, height: ch },
-        viewPosition: { x: 0, y: 0 }, deviceScaleFactor: 0, viewSize: { width: pageW, height: ch }, scale: 1,
+        screenPosition: 'desktop', screenSize: { width: vw, height: ch },
+        viewPosition: { x: 0, y: 0 }, deviceScaleFactor: 0, viewSize: { width: vw, height: ch }, scale: 1,
       });
     } catch {}
     view.setBounds({ x: pageW, y: 0, width, height: ch });
+  }
+
+  let hideScrollbarCss = null; // insertCSS key while the panel is open
+  async function syncScrollbarCss() {
+    const win = getWin();
+    if (!win || win.isDestroyed()) return;
+    const wc = win.webContents;
+    try {
+      if (open && !hideScrollbarCss) {
+        hideScrollbarCss = await wc.insertCSS('html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0 !important; height: 0 !important; background: transparent !important; }');
+      } else if (!open && hideScrollbarCss) {
+        const k = hideScrollbarCss; hideScrollbarCss = null;
+        await wc.removeInsertedCSS(k);
+      }
+    } catch {}
+  }
+
+  // Scrollbar width of the current page (0 for pages without one).
+  let scrollbarW = 0;
+  async function measureScrollbar() {
+    const win = getWin();
+    if (!open || !win || win.isDestroyed()) return;
+    try {
+      const w = await win.webContents.executeJavaScript('Math.max(0, innerWidth - document.documentElement.clientWidth)', true);
+      const n = Math.max(0, Math.min(24, Math.round(Number(w) || 0)));
+      if (n !== scrollbarW) { scrollbarW = n; layout(); }
+    } catch {}
   }
 
   function ensureView() {
@@ -53,6 +84,13 @@ function createSidebar({ getWin, readState, writeState, onToggle }) {
     const wc = win.webContents;
     // Navigation drops the emulated viewport: put it back at once.
     for (const ev of ['did-start-navigation', 'did-navigate', 'dom-ready', 'did-finish-load']) wc.on(ev, () => { if (open) layout(); });
+    // A page can gain or lose its scrollbar as it loads or changes: check now and then.
+    for (const ev of ['dom-ready', 'did-finish-load']) wc.on(ev, () => setTimeout(measureScrollbar, 300));
+    // With the emulated viewport Chromium draws the page scrollbar over the
+    // content at its right edge, a strip next to the panel: hide it while the
+    // panel is open (the wheel still scrolls). Re-added after each navigation.
+    wc.on('dom-ready', () => { hideScrollbarCss = null; if (open) syncScrollbarCss(); });
+    setInterval(measureScrollbar, 2000);
     win.on('resize', layout);
     win.on('maximize', layout);
     win.on('unmaximize', layout);
@@ -66,6 +104,7 @@ function createSidebar({ getWin, readState, writeState, onToggle }) {
     if (open) win.contentView.addChildView(view);
     else win.contentView.removeChildView(view);
     layout();
+    syncScrollbarCss();
     const st = readState(); st.aiSidebarOpen = open; writeState(st);
     try { win.webContents.send('otp:ai-sidebar', { open }); } catch {}
     if (onToggle) onToggle(open);

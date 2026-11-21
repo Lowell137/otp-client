@@ -373,7 +373,7 @@
     msgs.scrollTop = msgs.scrollHeight;
     return d;
   };
-  const LABEL = { current_game: 'Checking the game', champion_build: 'Getting the build', recommend_items: 'Checking their team', player_profile: 'Looking up the player', tier_list: 'Reading the tier list', patch_notes: 'Reading patch notes', lol_wiki: 'Searching the wiki', suggest_pick: 'Finding picks', last_game: 'Loading the game', duo_synergy: 'Checking duo synergy', counters: 'Checking matchups', esports: 'Checking pro play', player_matches: 'Reading matches' };
+  const LABEL = { current_game: 'Checking the game', champion_build: 'Getting the build', recommend_items: 'Checking their team', player_profile: 'Looking up the player', tier_list: 'Reading the tier list', patch_notes: 'Reading patch notes', lol_wiki: 'Searching the wiki', suggest_pick: 'Finding picks', last_game: 'Loading the game', duo_synergy: 'Checking duo synergy', counters: 'Checking matchups', esports: 'Checking pro play', lol_knowledge: 'Reading game notes', player_matches: 'Reading matches' };
   let curId = null, stepEl = null;
   API.onAiEvent((ev) => { if (ev.id === curId && ev.type === 'tool' && stepEl) stepEl.textContent = (LABEL[ev.name] || ev.name) + '…'; });
   async function ask(text) {
