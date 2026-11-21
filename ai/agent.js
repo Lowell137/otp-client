@@ -160,6 +160,12 @@ async function fillFromQuestion(name, args, q) {
       return { ...args, ...(mine ? { myChampion: mine } : {}), ...(enemies.length ? { enemies } : {}) };
     }
   }
+  if (name === 'counters' && !args.champion) {
+    // "Yasuo vs Annie mid": first champion is mine, second the opponent.
+    const champs = await champsIn(q);
+    const role = (ROLE_WORDS.find(([, re]) => re.test(q)) || [])[0];
+    if (champs.length) return { ...args, champion: champs[0], ...(champs[1] && !args.opponent ? { opponent: champs[1] } : {}), ...(role && !args.role ? { role } : {}) };
+  }
   if (name === 'champion_build' && !args.champion) {
     const champs = await champsIn(q);
     if (champs.length) return { ...args, champion: champs[0] };
