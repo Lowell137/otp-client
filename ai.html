@@ -25,7 +25,7 @@
   #grip:hover, #grip.on { background: rgba(16, 99, 183, .6); }
 
   /* 56 px bar like the app header; the right part stays free for the window buttons */
-  #top { height: 56px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 146px 0 14px; background: var(--fg); border-bottom: 1px solid var(--line); user-select: none; }
+  #top { height: var(--barH, 56px); flex: none; display: flex; align-items: center; gap: 6px; padding: 0 146px 0 14px; background: var(--barBg, var(--fg)); border-bottom: 1px solid var(--line); user-select: none; }
   #top h1 { font-size: 14px; margin: 0; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   #top .sp { flex: 1; min-width: 4px; }
   .ib { width: 30px; height: 30px; flex: none; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--soft); cursor: pointer; padding: 0; }
@@ -270,7 +270,7 @@
 
   const TOOL_LABEL = {
     current_game: 'Checking the current game', player_profile: 'Looking up the player', player_matches: 'Reading match history',
-    recommend_items: 'Checking the enemy team', tier_list: 'Reading the tier list', suggest_pick: 'Finding picks', counters: 'Checking matchups', esports: 'Checking pro play', lol_knowledge: 'Reading game notes', last_game: 'Loading the game', game_review: 'Reviewing the game', duo_synergy: 'Checking duo synergy', champion_build: 'Getting the build', patch_notes: 'Reading patch notes', lol_wiki: 'Searching the wiki', read_page: 'Reading a page',
+    recommend_items: 'Checking the enemy team', tier_list: 'Reading the tier list', suggest_pick: 'Finding picks', counters: 'Checking matchups', esports: 'Checking pro play', lol_knowledge: 'Reading game notes', last_game: 'Loading the game', played_with: 'Checking who you play with', game_review: 'Reviewing the game', duo_synergy: 'Checking duo synergy', champion_build: 'Getting the build', patch_notes: 'Reading patch notes', lol_wiki: 'Searching the wiki', read_page: 'Reading a page',
   };
   // Start screen: suggestions follow what you are doing (out of game, champion
   // select, in game) and name your champion / lane opponent when known.
@@ -504,6 +504,14 @@
   // ---- Chat ----
   const listeners = new Set();
   window.otpAI.onEvent((ev) => { for (const f of listeners) f(ev); });
+  // The top bar copies the page header's height and color (sent from main), so the page and the panel read as one strip.
+  const setBar = (b) => {
+    if (!b) return;
+    document.documentElement.style.setProperty('--barH', `${Math.max(40, Math.min(80, Number(b.height) || 56))}px`);
+    if (/^#[0-9a-f]{6}$/i.test(b.color || '')) document.documentElement.style.setProperty('--barBg', b.color);
+  };
+  window.otpAI.bar().then(setBar).catch(() => {});
+  window.otpAI.onBar(setBar);
   const updateSend = () => { send.disabled = !busyId && !q.value.trim() && !atts.length; };
 
   async function ask(text) {

@@ -250,6 +250,7 @@ function mock() {
         return { content: '', toolCalls: [{ id: 'c1', name: 'recommend_items', args: { enemies: vs ? vs[1].split(',').map((x) => x.trim()) : undefined, myChampion: me ? me[1].trim() : undefined } }] };
       }
       const rid = String(last.content || '').match(/([^\s#]{3,16})#([A-Za-z0-9]{2,5})/);
+      if (/played with|together/.test(text) && pick('played_with')) { const w = String(last.content || '').match(/with ([^s,?]+)/i); return { content: '', toolCalls: [{ id: 'c1', name: 'played_with', args: { riotId: rid ? `${rid[1]}#${rid[2]}` : undefined, region: 'TR', with: w ? w[1] : undefined, games: 40 } }] }; }
       if (/review|mistake|hata/.test(text) && pick('game_review')) return { content: '', toolCalls: [{ id: 'c1', name: 'game_review', args: rid ? { riotId: `${rid[1]}#${rid[2]}`, region: /TR/.test(String(last.content)) ? 'TR' : undefined, index: Number((String(last.content).match(/index (\d)/) || [])[1] || 0) } : {} }] };
       if (rid && pick('player_profile')) return { content: '', toolCalls: [{ id: 'c1', name: 'player_profile', args: { riotId: `${rid[1]}#${rid[2]}` } }] };
       if (pick('current_game')) return { content: '', toolCalls: [{ id: 'c1', name: 'current_game', args: {} }] };

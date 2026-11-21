@@ -49,6 +49,7 @@ function systemPrompt(who) {
     '- boots and defensive items against the enemy team: recommend_items.',
     '- MY MISTAKES / personal advice from a finished game ("hatalarım", "ne yanlış yaptım", "bu maçı incele", "what went wrong", "review my game", "neden kaybettim", "bana tavsiye ver"): game_review (default: my last game; index 1 = the one before). It returns findings with times, map places and win-chance numbers. Use last_game too when items matter.',
     '  How to answer a review: talk to the player in second person, like a coach who watched the game. Pick the 2-3 biggest problems from `findings` (the first ones matter most), each with the minutes and the numbers from the data, say WHY it hurt (what the enemy got right after, how much win chance), and what to do differently next game. End with one thing they did well (`strengths`) and one habit to practise. Never invent what you cannot see: the data has no wave state, cooldowns, wards on the map or what the player was thinking, so say "I cannot see X" if the question needs it. A pattern across games needs several games: call game_review with index 0, 1, 2 before saying "you always".',
+    '- who the player plays with / against ("hep yanımda o var", "duo mu atıyorum", "X ile mi oynuyorum", "is X on my team", "who do I queue with"): played_with. Pass the name the user mentioned as `with` (a Riot ID or just the name). Without a name it lists the most frequent teammates. Premade is not in the data: a player on the same team in several Ranked Solo/Duo games means they queued together; say that, not more.',
     '- items of a finished game ("bu maç ne almalıydım"): last_game. Compare the items with the enemy team and the recommended build, then give 2-4 concrete points.',
     '- who is in my current game: current_game (only during champion select or a game).',
     '- a specific player: player_profile, player_matches. An enemy or ally named by champion ("the enemy Ezreal"): pass that champion.',
@@ -163,6 +164,8 @@ function forcedTool(q) {
   // Mistakes / review of a finished game: the timeline review (with an account named: that player's game).
   const reviewAsk = /(hata|yanl[ıi]ş|mistake|went wrong|review|incele|analiz|neden kaybet|why did i (lose|die)|ne yapmal[ıi]yd[ıi]m|ne yapmal[ıi]yd[ıi]|ki[sş]isel|kendimi geli[sş]|improve|coach)/i.test(t);
   if (reviewAsk && !/\bbu iki hesab/i.test(t)) return { name: 'game_review', args: ids.length ? ids[0] : {} };
+  // Who they play with: friends, duos, "always on my team".
+  if (/(yan[ıi]mda|birlikte|beraber|duo|premade|ile oynuyor|tak[ıi]m arkada|teammate|play(ed|ing)? with|always (on )?my team|hep o var)/i.test(t)) return { name: 'played_with', args: ids.length ? { with: ids[0].riotId, ...(ids[0].region ? { region: ids[0].region } : {}) } : {} };
   if (ids.length) return { calls: ids.flatMap((a) => [{ name: 'player_profile', args: a }, { name: 'player_matches', args: a }]) };
   if (/(\bbot(u|unu|lar|ları|lari)\b|boots|savunma|defansif|defensive|karşı.*(al|item|eşya)|(item|eşya).*karşı|anti.?heal)/i.test(t)) return { name: 'recommend_items', args: {} };
   if (/(espor|esports|\blck\b|\blec\b|\blpl\b|\blcs\b|worlds|\bmsi\b|pro (oyuncu|maç|player|game)|turnuva|tournament)/i.test(t)) return { name: 'esports', args: {} };

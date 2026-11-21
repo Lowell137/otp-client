@@ -1019,18 +1019,27 @@ app.whenReady().then(async () => {
 
   // Native caption buttons follow the page header: same color (home #141415,
   // inner pages #212324) and same height so they sit on the nav row.
-  // With the assistant panel open the buttons sit on the panel's top bar instead
-  // (#212324, 56 px), whatever page is on the left.
+  // With the assistant panel open the buttons sit on the panel's top bar instead,
+  // which copies the page header's color and height.
   let lastCaption = '';
+  let aiBar = { color: '#212324', height: 56 };
   let pageCaption = { color: CAPTION.color, height: CAPTION.height };
   applyCaption = () => {
     if (!win || win.isDestroyed()) return;
-    const { color, height } = aiSidebar && aiSidebar.isOpen() ? { color: '#212324', height: 56 } : pageCaption;
+    // Panel open: its top bar takes the page header's own height and color, so the
+    // two bars read as one strip (no step where they meet). Pages that show the
+    // wallpaper behind the buttons (transparent) get the dark default.
+    const open = aiSidebar && aiSidebar.isOpen();
+    const clear = /^#[0-9a-f]{6}00$/i.test(pageCaption.color);
+    const { color, height } = open ? { color: clear ? '#212324' : pageCaption.color, height: pageCaption.height } : pageCaption;
+    aiBar = { color, height };
+    if (open) { try { const w = aiSidebar.webContents(); if (w && !w.isDestroyed()) w.send('otp:ai-bar', aiBar); } catch {} }
     const key = color + height;
     if (key === lastCaption) return;
     lastCaption = key;
     try { win.setTitleBarOverlay({ color, symbolColor: CAPTION.symbolColor, height }); } catch {}
   };
+  ipcMain.handle('otp:ai-bar-get', () => aiBar);
   ipcMain.on('otp:caption', (_e, c) => {
     if (!win || win.isDestroyed() || !c) return;
     // #rrggbb, or #rrggbbaa (e.g. #00000000) so local pages can show the wallpaper behind the buttons.

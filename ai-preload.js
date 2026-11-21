@@ -24,5 +24,7 @@ contextBridge.exposeInMainWorld('otpAI', {
   close: () => ipcRenderer.send('otp:ai-sidebar-close'),
   resize: (screenX) => ipcRenderer.send('otp:ai-resize', screenX),
   resizeEnd: () => ipcRenderer.send('otp:ai-resize-end'),
+  bar: () => ipcRenderer.invoke('otp:ai-bar-get'),
+  onBar: (fn) => ipcRenderer.on('otp:ai-bar', (_e, b) => { try { fn(b); } catch {} }),
   winDrag: (phase) => ipcRenderer.send('otp:win-drag', phase),
 });
